@@ -1,0 +1,22 @@
+# Environment + secrets
+.env
+
+# Composer dependencies (re-install with `composer install`)
+/vendor/
+
+# Node / front-end builds (if you add one later)
+/node_modules/
+/public/build/
+/assets/dist/
+
+# Logs & debug
+*.log
+php_errorlog
+/storage/logs/
+/backend/debug_eval.txt
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
