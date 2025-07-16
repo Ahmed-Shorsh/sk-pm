@@ -88,13 +88,13 @@ if ($status === 'success' && !empty($_SESSION['user_id'])) {
 </head>
 <body class="bg-light text-dark font-serif">
 
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-    <div class="container">
-        <a class="navbar-brand fw-bold" href="../index.php">SK-PM</a>
-    </div>
-</nav>
+
 
 <div class="container py-5">
+<div class="text-center mb-4">
+    <img src="../assets/logo/ske-dark.png" alt="SK-ESTATE" class="img-fluid" style="max-width: auto; height: 150px;">
+</div>
+
     <div class="data-container text-center">
         <?php if ($status === 'success'): ?>
             <div class="mb-4">

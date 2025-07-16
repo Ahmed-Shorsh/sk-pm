@@ -1,11 +1,12 @@
 <?php
 
 require_once __DIR__ . '/../backend/db.php';
+$root = dirname(__DIR__);
 
 if (getenv('TG_BOT_TOKEN') === false) {
-    $envFile = __DIR__ . '.env';
-    if (is_readable($envFile)) {
-        foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+    $envPath = $root . '/.env';
+    if (is_readable($envPath)) {
+        foreach (file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
             if ($line[0] === '#') continue;
             [$k, $v] = array_map('trim', explode('=', $line, 2));
             if ($k !== '' && getenv($k) === false) putenv("$k=$v");

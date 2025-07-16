@@ -237,11 +237,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </style>
 </head>
 <body>
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-    <a class="navbar-brand" href="index.php">SK‑PM</a>
-</nav>
+
 
 <main class="container py-5">
+<div class="text-center mb-4">
+    <img src="./assets/logo/ske-dark.png" alt="SK-ESTATE" class="img-fluid" style="max-width: auto; height: 150px;">
+</div>
+
     <h1 class="mb-4">Create Your Account</h1>
 
     <?php if ($success_message): ?>

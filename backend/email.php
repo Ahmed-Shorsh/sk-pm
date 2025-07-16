@@ -362,32 +362,30 @@ class EmailService {
     </style>
 </head>
 <body>
+
+
     <div class="email-wrapper">
         <table role="presentation" class="email-container">
             <tr>
                 <td>
                  <div class="header">
-    <a href="https://ske.southkurdistan.com" target="_blank">
-        <img src="' . $this->getBaseUrl() . '/../assets/logo/ske-dark.png" 
-             alt="SKE Logo" 
-             width="100px" 
-             height="100%" 
-             style="display: block; margin: 0 auto;" 
+   <a href="https://ske.southkurdistan.com" target="_blank">
+        <img src="' . $this->getBaseUrl() . '/../assets/logo/ske-dark.png"
+             alt="SKE Logo"
+             width="100px"
+             height="100%"
+             style="display: block; margin: 0 auto;"
              class="logo-img">
-        <!--[if !mso]><!-->
-        <div style="display: none; mso-hide: all;">
-            <img src="' . $this->getBaseUrl() . '/../assets/logo/ske-light.png" 
-                 alt="SKE Logo" 
-                 width="100px" 
-             height="100%" 
-                 style="display: block; margin: 0 auto;" 
-                 class="logo-img-light">
-        </div>
-        <!--<![endif]-->
     </a>
     <h1 class="company-name">SK Estate</h1>
     <p class="company-subtitle">Performance Management System</p>
 </div>
+
+
+
+
+
+
                     
                     <div class="content">
                         <h2 class="title">Welcome, ' . htmlspecialchars($userName) . '</h2>
