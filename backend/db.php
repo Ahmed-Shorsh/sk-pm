@@ -2,7 +2,15 @@
 // File: backend/db.php
 // Purpose: Establish a secure PDO connection to the MySQL database
 
-// Database credentials
+
+
+// hosted
+// define('DB_HOST', 'localhost');
+// define('DB_NAME', 'dbvwgo85dtqpmm');
+// define('DB_USER', 'ukjjbxzlryc5n');
+// define('DB_PASS', '$sk$-101');
+
+// local
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'sk-pm');
 define('DB_USER', 'root');

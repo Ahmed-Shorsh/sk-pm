@@ -10,6 +10,25 @@ require_once __DIR__ . '/backend/db.php';    // $pdo
 require_once __DIR__ . '/backend/utils.php'; // sanitize, isValidEmail
 require_once __DIR__ . '/backend/email.php'; // EmailService
 
+// Load .env file if needed
+env_load_once();
+
+function env_load_once(): void {
+    if (getenv('TG_BOT_USERNAME') === false) {
+        $env = __DIR__ . '/.env';
+        if (is_readable($env)) {
+            foreach (file($env, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+                $line = trim($line);
+                if ($line === '' || $line[0] === '#') continue;
+                [$k, $v] = array_map('trim', explode('=', $line, 2));
+                if ($k !== '' && getenv($k) === false) {
+                    putenv("$k=$v");
+                }
+            }
+        }
+    }
+}
+
 // Prepare for form values
 $errors = [];
 $success_message = '';
@@ -23,7 +42,22 @@ $position = '';
 $birth_date = '';
 $hire_date = '';
 
-// Fetch active departments
+// Telegram requirement setting
+$telegramRequired = false;
+try {
+    $stmt = $pdo->prepare(
+        "SELECT setting_value FROM settings WHERE setting_key = 'telegram_signup_required'"
+    );
+    $stmt->execute();
+    $val = $stmt->fetchColumn();
+    if ($val !== false) {
+        $telegramRequired = ($val === '1');
+    }
+} catch (Exception $e) {
+    error_log("Unable to load telegram setting: " . $e->getMessage());
+}
+
+// Fetch departments
 try {
     $stmt = $pdo->query('SELECT dept_id, dept_name FROM departments ORDER BY dept_name');
     $departments = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -32,7 +66,7 @@ try {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Sanitize POST
+    // Sanitize inputs
     $name = sanitize($_POST['name'] ?? '');
     $email = sanitize($_POST['email'] ?? '');
     $dept_id = (int)($_POST['dept_id'] ?? 0);
@@ -44,41 +78,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $hire_date = $_POST['hire_date'] ?? '';
 
     // Validation
-    // Name
     if (mb_strlen($name) < 2) {
         $errors['name'] = 'Name must be at least 2 characters.';
     }
-
-    // Email
     if (!isValidEmail($email)) {
         $errors['email'] = 'Please enter a valid email address.';
     }
-
-    // Department
     $validDeptIds = array_column($departments, 'dept_id');
     if (!in_array($dept_id, $validDeptIds, true)) {
         $errors['dept_id'] = 'Please select a valid department.';
     }
-
-    // Phone - International format validation
     if (!preg_match('/^\+[1-9]\d{1,14}$/', $phone)) {
         $errors['phone'] = 'Phone must be in international format (e.g., +1234567890).';
     }
-
-    // Position
     if (empty($position)) {
         $errors['position'] = 'Position is required.';
     }
-
-    // Dates
     if ($birth_date && !DateTime::createFromFormat('Y-m-d', $birth_date)) {
         $errors['birth_date'] = 'Please enter a valid birth date.';
     }
     if ($hire_date && !DateTime::createFromFormat('Y-m-d', $hire_date)) {
         $errors['hire_date'] = 'Please enter a valid hire date.';
     }
-
-    // Password
     if (mb_strlen($password) < 8) {
         $errors['password'] = 'Password must be at least 8 characters long.';
     }
@@ -88,8 +109,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($password !== $confirm) {
         $errors['confirm_password'] = 'Password confirmation does not match.';
     }
-
-    // Email uniqueness
     if (empty($errors['email'])) {
         $stmt = $pdo->prepare('SELECT COUNT(*) FROM users WHERE email = ?');
         $stmt->execute([$email]);
@@ -101,50 +120,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($errors)) {
         try {
             $pdo->beginTransaction();
-            
+
             $hash = password_hash($password, PASSWORD_BCRYPT);
-            $role_id = 3; // Employee
-            $active = 1;
-            $email_verified = 0;
             $verification_token = generateVerificationToken();
             $verification_expires = date('Y-m-d H:i:s', strtotime('+24 hours'));
-
             $sql = 'INSERT INTO users
-                    (name, email, password_hash, role_id, dept_id, phone, position, birth_date, hire_date, active, email_verified, email_verification_token, email_verification_expires)
+                    (name, email, password_hash, role_id, dept_id, phone, position, birth_date, hire_date,
+                     active, email_verified, email_verification_token, email_verification_expires)
                     VALUES
-                    (:name, :email, :hash, :role, :dept, :phone, :position, :birth_date, :hire_date, :active, :email_verified, :token, :expires)';
-            
+                    (:name, :email, :hash, 3, :dept, :phone, :position, :birth_date, :hire_date,
+                            1, 0, :token, :expires)';
             $stmt = $pdo->prepare($sql);
             $success = $stmt->execute([
                 ':name' => $name,
                 ':email' => $email,
                 ':hash' => $hash,
-                ':role' => $role_id,
                 ':dept' => $dept_id,
                 ':phone' => $phone,
                 ':position' => $position,
                 ':birth_date' => $birth_date ?: null,
                 ':hire_date' => $hire_date ?: null,
-                ':active' => $active,
-                ':email_verified' => $email_verified,
                 ':token' => $verification_token,
                 ':expires' => $verification_expires
             ]);
 
             if ($success) {
-                // Send verification email
+                $userId = $pdo->lastInsertId();
+                $telegramToken = bin2hex(random_bytes(16));
+                $pdo->prepare(
+                    'INSERT INTO user_telegram (user_id, token) VALUES (?, ?)'
+                )->execute([$userId, $telegramToken]);
+
                 $emailService = new EmailService();
                 $emailSent = $emailService->sendVerificationEmail($email, $name, $verification_token);
-                
+
                 $pdo->commit();
-                
+
+                $botUsername = getenv('TG_BOT_USERNAME');
+                $botLink = "https://t.me/{$botUsername}?start={$telegramToken}";
                 if ($emailSent) {
-                    $success_message = "Registration successful! Please check your email and click the verification link to activate your account.";
+                    if ($telegramRequired) {
+                        $success_message =
+                            "Registration successful!<br>✅ Check your email to activate.<br><br>"
+                          . "🚩 <strong>One more step:</strong> Verify via Telegram. Press /start.";
+                    } else {
+                        $success_message =
+                            "Registration successful!<br>✅ Check your email to activate.<br><br>"
+                          . "💬 Tip: Link Telegram for reminders (optional).";
+                    }
                 } else {
-                    $success_message = "Registration successful! However, we couldn't send the verification email. Please contact support.";
+                    $success_message =
+                        "Registration successful! But we couldn't send the email. Contact support.<br><br>"
+                      . "💬 You can still link Telegram:";
                 }
-                
-                // Clear form data on success
+                $success_message .= "<br><br><a href=\"{$botLink}\" class=\"btn btn-primary\" target=\"_blank\">"
+                                   . "🔗 Verify via Telegram</a>";
+
                 $name = $email = $phone = $position = $birth_date = $hire_date = $password = $confirm = '';
                 $dept_id = null;
             } else {
@@ -158,6 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -213,10 +245,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <h1 class="mb-4">Create Your Account</h1>
 
     <?php if ($success_message): ?>
-        <div class="alert alert-success">
-            <?= htmlspecialchars($success_message) ?>
-        </div>
-    <?php endif; ?>
+    <div class="alert alert-success">
+        <?= $success_message ?>
+    </div>
+<?php endif; ?>
 
     <?php if (!empty($errors['general'])): ?>
         <div class="alert alert-danger">

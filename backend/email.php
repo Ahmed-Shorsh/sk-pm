@@ -1,8 +1,4 @@
 <?php
-/**
- * Email Service for SK-PM
- * Handles sending verification emails and other notifications
- */
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
@@ -28,52 +24,34 @@ class EmailService {
         $this->setupMailer();
     }
     
-    // private function setupMailer() {
-    //     $this->mailer->isSMTP();
-    //     $this->mailer->Host = $this->config['smtp_host'];
-    //     $this->mailer->SMTPAuth = true;
-    //     $this->mailer->Username = $this->config['smtp_username'];
-    //     $this->mailer->Password = $this->config['smtp_password'];
-    //     $this->mailer->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-    //     $this->mailer->Port = $this->config['smtp_port'];
-        
-    //     $this->mailer->setFrom($this->config['from_email'], $this->config['from_name']);
-    //     $this->mailer->isHTML(true);
-    // }
     private function setupMailer() {
         $this->mailer->isSMTP();
-        $this->mailer->Host       = $this->config['smtp_host'];
-        $this->mailer->SMTPAuth   = true;
-        $this->mailer->Username   = $this->config['smtp_username'];
-        $this->mailer->Password   = $this->config['smtp_password'];
-        // OPTION A: Implicit SSL on 465
+        $this->mailer->Host = $this->config['smtp_host'];
+        $this->mailer->SMTPAuth = true;
+        $this->mailer->Username = $this->config['smtp_username'];
+        $this->mailer->Password = $this->config['smtp_password'];
         $this->mailer->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
-        $this->mailer->Port       = 465;
-    
-        // OPTION B: STARTTLS on 587
-        // $this->mailer->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-        // $this->mailer->Port       = 587;
-    
-        // in case your server uses a self-signed cert:
+        $this->mailer->Port = 465;
+        
         $this->mailer->SMTPOptions = [
             'ssl' => [
-                'verify_peer'      => false,
+                'verify_peer' => false,
                 'verify_peer_name' => false,
-                'allow_self_signed'=> true,
+                'allow_self_signed' => true,
             ],
         ];
-    
+        
         $this->mailer->setFrom($this->config['from_email'], $this->config['from_name']);
         $this->mailer->isHTML(true);
     }
-    
     
     public function sendVerificationEmail($toEmail, $toName, $verificationToken) {
         try {
             $this->mailer->clearAddresses();
             $this->mailer->addAddress($toEmail, $toName);
             
-            $verificationUrl = $this->getBaseUrl() . '/verify-email.php?token=' . urlencode($verificationToken);
+            $verificationUrl = $this->getBaseUrl() . '/backend/verify-email.php?token=' . urlencode($verificationToken);
+
             
             $this->mailer->Subject = 'Verify Your Email - SK Estate Performance Management';
             $this->mailer->Body = $this->getVerificationEmailTemplate($toName, $verificationUrl);
@@ -87,297 +65,377 @@ class EmailService {
     
     private function getVerificationEmailTemplate($userName, $verificationUrl) {
         return '
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Email Verification - SK Estate</title>
-            <!--[if mso]>
-            <noscript>
-                <xml>
-                    <o:OfficeDocumentSettings>
-                        <o:PixelsPerInch>96</o:PixelsPerInch>
-                    </o:OfficeDocumentSettings>
-                </xml>
-            </noscript>
-            <![endif]-->
-            <style type="text/css">
-                /* Reset styles for better email client compatibility */
-                body, table, td, p, a, li, blockquote {
-                    -webkit-text-size-adjust: 100%;
-                    -ms-text-size-adjust: 100%;
-                }
-                table, td {
-                    mso-table-lspace: 0pt;
-                    mso-table-rspace: 0pt;
-                }
-                img {
-                    -ms-interpolation-mode: bicubic;
-                    border: 0;
-                    height: auto;
-                    line-height: 100%;
-                    outline: none;
-                    text-decoration: none;
-                }
-                
-                /* Main styles */
-                body {
-                    margin: 0 !important;
-                    padding: 0 !important;
-                    background-color: #f5f5f5;
-                    font-family: Arial, sans-serif;
-                    font-size: 16px;
-                    line-height: 1.6;
-                    color: #333333;
-                }
-                
-                .email-container {
-                    max-width: 600px;
-                    margin: 0 auto;
-                    background-color: #ffffff;
-                }
-                
-                .header-section {
-                    background-color: #000000;
-                    padding: 40px 30px;
-                    text-align: center;
-                }
-                
-                .logo-container {
-                    margin-bottom: 20px;
-                }
-                
-                .logo-link {
-                    display: inline-block;
-                    text-decoration: none;
-                }
-                
-                .logo-circle {
-                    width: 80px;
-                    height: 80px;
-                    background-color: #ffffff;
-                    border-radius: 50%;
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    font-size: 28px;
-                    font-weight: bold;
-                    color: #000000;
-                    text-decoration: none;
-                    margin: 0 auto;
-                }
-                
-                .company-name {
-                    color: #ffffff;
-                    font-size: 32px;
-                    font-weight: bold;
-                    margin: 15px 0 5px 0;
-                    letter-spacing: 1px;
-                }
-                
-                .company-subtitle {
-                    color: #cccccc;
-                    font-size: 16px;
-                    margin: 0;
-                    font-weight: normal;
-                }
-                
-                .content-section {
-                    padding: 40px 30px;
-                    background-color: #ffffff;
-                }
-                
-                .welcome-title {
-                    font-size: 24px;
-                    font-weight: bold;
-                    color: #000000;
-                    margin: 0 0 20px 0;
-                    text-align: center;
-                }
-                
-                .content-text {
-                    font-size: 16px;
-                    line-height: 1.6;
-                    color: #333333;
-                    margin: 0 0 20px 0;
-                }
-                
-                .button-container {
-                    text-align: center;
-                    margin: 30px 0;
-                }
-                
-                .verify-button {
-                    display: inline-block;
-                    background-color: #000000;
-                    color: #ffffff !important;
-                    padding: 16px 32px;
-                    text-decoration: none;
-                    border-radius: 4px;
-                    font-size: 16px;
-                    font-weight: bold;
-                    border: 2px solid #000000;
-                    transition: all 0.3s ease;
-                }
-                
-                .verify-button:hover {
-                    background-color: #333333;
-                    border-color: #333333;
-                }
-                
-                .url-container {
-                    background-color: #f8f8f8;
-                    border: 1px solid #e0e0e0;
-                    border-radius: 4px;
-                    padding: 15px;
-                    margin: 20px 0;
-                    word-break: break-all;
-                    font-size: 14px;
-                    color: #666666;
-                }
-                
-                .important-notice {
-                    background-color: #f0f0f0;
-                    border-left: 4px solid #000000;
-                    padding: 15px;
-                    margin: 25px 0;
-                    font-size: 14px;
-                }
-                
-                .signature {
-                    margin-top: 30px;
-                    padding-top: 20px;
-                    border-top: 1px solid #e0e0e0;
-                }
-                
-                .footer-section {
-                    background-color: #f8f8f8;
-                    padding: 25px 30px;
-                    text-align: center;
-                    border-top: 1px solid #e0e0e0;
-                }
-                
-                .footer-text {
-                    font-size: 12px;
-                    color: #666666;
-                    margin: 5px 0;
-                    line-height: 1.4;
-                }
-                
-                /* Responsive styles */
-                @media screen and (max-width: 600px) {
-                    .email-container {
-                        width: 100% !important;
-                        max-width: 100% !important;
-                    }
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="x-apple-disable-message-reformatting">
+    <meta name="color-scheme" content="light dark">
+    <meta name="supported-color-schemes" content="light dark">
+    <title>Email Verification - SK Estate</title>
+    <!--[if mso]>
+    <xml>
+        <o:OfficeDocumentSettings>
+            <o:PixelsPerInch>96</o:PixelsPerInch>
+        </o:OfficeDocumentSettings>
+    </xml>
+    <![endif]-->
+    <style>
+        :root {
+            color-scheme: light dark;
+        }
+        
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            font-size: 16px;
+            line-height: 1.5;
+            color: #333333;
+            background-color: #f8f9fa;
+            -webkit-text-size-adjust: 100%;
+            -ms-text-size-adjust: 100%;
+        }
+        
+        table {
+            border-spacing: 0;
+            border-collapse: collapse;
+            width: 100%;
+        }
+        
+        td {
+            padding: 0;
+            vertical-align: top;
+        }
+        
+        img {
+            border: 0;
+            line-height: 100%;
+            outline: none;
+            text-decoration: none;
+            -ms-interpolation-mode: bicubic;
+        }
+        
+        .email-wrapper {
+            width: 100%;
+            background-color: #f8f9fa;
+            padding: 20px 0;
+        }
+        
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .header {
+            background-color: #ffffff;
+            padding: 32px 24px;
+            text-align: center;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .logo-img {
+            display: block;
+            margin: 0 auto 16px auto;
+            max-width: 120px;
+            height: auto;
+        }
+        
+        .logo-img-light {
+            display: none;
+        }
+        
+        .company-name {
+            font-size: 20px;
+            font-weight: 600;
+            color: #212529;
+            margin: 0 0 4px 0;
+        }
+        
+        .company-subtitle {
+            font-size: 14px;
+            color: #6c757d;
+            margin: 0;
+        }
+        
+        .content {
+            padding: 32px 24px;
+        }
+        
+        .title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #212529;
+            margin: 0 0 16px 0;
+            text-align: center;
+        }
+        
+        .text {
+            font-size: 16px;
+            line-height: 1.5;
+            color: #495057;
+            margin: 0 0 16px 0;
+        }
+        
+        .button-container {
+            text-align: center;
+            margin: 24px 0;
+        }
+        
+        .button {
+            display: inline-block;
+            background-color: #000000;
+            color: #ffffff;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: 500;
+            border: 1px solid #000000;
+            text-align: center;
+            min-width: 200px;
+        }
+        
+        .link-container {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 16px;
+            margin: 16px 0;
+            word-break: break-all;
+            font-size: 14px;
+            color: #6c757d;
+        }
+        
+        .notice {
+            background-color: #f8f9fa;
+            border-left: 3px solid #000000;
+            padding: 16px;
+            margin: 24px 0;
+            font-size: 14px;
+            color: #495057;
+        }
+        
+        .footer {
+            background-color: #f8f9fa;
+            padding: 24px;
+            text-align: center;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        .footer-text {
+            font-size: 12px;
+            color: #6c757d;
+            margin: 0 0 8px 0;
+        }
+        
+        .footer-text:last-child {
+            margin-bottom: 0;
+        }
+        
+        /* Dark mode support */
+        @media (prefers-color-scheme: dark) {
+            .email-wrapper {
+                background-color: #1a1a1a !important;
+            }
+            
+            .email-container {
+                background-color: #2d2d2d !important;
+                border-color: #404040 !important;
+            }
+            
+            .header {
+                background-color: #2d2d2d !important;
+                border-bottom-color: #404040 !important;
+            }
+            
+            .logo-img {
+                display: none !important;
+            }
+            
+            .logo-img-light {
+                display: block !important;
+                margin: 0 auto 16px auto !important;
+                max-width: 120px !important;
+                height: auto !important;
+            }
+            
+            .company-name {
+                color: #ffffff !important;
+            }
+            
+            .company-subtitle {
+                color: #b3b3b3 !important;
+            }
+            
+            .content {
+                background-color: #2d2d2d !important;
+            }
+            
+            .title {
+                color: #ffffff !important;
+            }
+            
+            .text {
+                color: #cccccc !important;
+            }
+            
+            .button {
+                background-color: #ffffff !important;
+                color: #000000 !important;
+                border-color: #ffffff !important;
+            }
+            
+            .link-container {
+                background-color: #404040 !important;
+                border-color: #595959 !important;
+                color: #b3b3b3 !important;
+            }
+            
+            .notice {
+                background-color: #404040 !important;
+                color: #cccccc !important;
+                border-left-color: #ffffff !important;
+            }
+            
+            .footer {
+                background-color: #404040 !important;
+                border-top-color: #595959 !important;
+            }
+            
+            .footer-text {
+                color: #b3b3b3 !important;
+            }
+        }
+        
+        /* Mobile responsiveness */
+        @media screen and (max-width: 600px) {
+            .email-wrapper {
+                padding: 12px !important;
+            }
+            
+            .email-container {
+                border-radius: 4px !important;
+            }
+            
+            .header,
+            .content,
+            .footer {
+                padding: 24px 20px !important;
+            }
+            
+            .title {
+                font-size: 16px !important;
+            }
+            
+            .text {
+                font-size: 14px !important;
+            }
+            
+            .button {
+                padding: 14px 20px !important;
+                font-size: 14px !important;
+                min-width: 160px !important;
+            }
+        }
+        
+        /* Outlook specific */
+        <!--[if mso]>
+        .email-container {
+            width: 600px !important;
+        }
+        
+        .button {
+            mso-style-priority: 100 !important;
+        }
+        <![endif]-->
+    </style>
+</head>
+<body>
+    <div class="email-wrapper">
+        <table role="presentation" class="email-container">
+            <tr>
+                <td>
+                 <div class="header">
+    <a href="https://ske.southkurdistan.com" target="_blank">
+        <img src="' . $this->getBaseUrl() . '/../assets/logo/ske-dark.png" 
+             alt="SKE Logo" 
+             width="100px" 
+             height="100%" 
+             style="display: block; margin: 0 auto;" 
+             class="logo-img">
+        <!--[if !mso]><!-->
+        <div style="display: none; mso-hide: all;">
+            <img src="' . $this->getBaseUrl() . '/../assets/logo/ske-light.png" 
+                 alt="SKE Logo" 
+                 width="100px" 
+             height="100%" 
+                 style="display: block; margin: 0 auto;" 
+                 class="logo-img-light">
+        </div>
+        <!--<![endif]-->
+    </a>
+    <h1 class="company-name">SK Estate</h1>
+    <p class="company-subtitle">Performance Management System</p>
+</div>
                     
-                    .header-section,
-                    .content-section,
-                    .footer-section {
-                        padding-left: 20px !important;
-                        padding-right: 20px !important;
-                    }
+                    <div class="content">
+                        <h2 class="title">Welcome, ' . htmlspecialchars($userName) . '</h2>
+                        
+                        <p class="text">
+                            Thank you for registering with SKE Performance Management System. 
+                            Please verify your email address to complete your registration.
+                        </p>
+                        
+                        <div class="button-container">
+                            <a href="' . $verificationUrl . '" class="button" target="_blank">
+                                Verify Email Address
+                            </a>
+                        </div>
+                        
+                        <p class="text">
+                            If the button doesn\'t work, copy and paste this link into your browser:
+                        </p>
+                        
+                        <div class="link-container">
+                            ' . $verificationUrl . '
+                        </div>
+                        
+                        <div class="notice">
+                            <strong>Security Notice:</strong> This link expires in 24 hours. 
+                            If you didn\'t create this account, please ignore this email.
+                        </div>
+                        
+                        <p class="text">
+                            Best regards,<br>
+                            SKE HR Team
+                        </p>
+                    </div>
                     
-                    .company-name {
-                        font-size: 28px !important;
-                    }
-                    
-                    .welcome-title {
-                        font-size: 20px !important;
-                    }
-                    
-                    .verify-button {
-                        padding: 14px 24px !important;
-                        font-size: 14px !important;
-                    }
-                }
-                
-                /* Outlook specific fixes */
-                <!--[if mso]>
-                .verify-button {
-                    border: none !important;
-                    mso-style-priority: 99;
-                }
-                <![endif]-->
-            </style>
-        </head>
-        <body>
-            <div style="background-color: #f5f5f5; padding: 20px 0;">
-                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                    <tr>
-                        <td>
-                            <div class="email-container">
-                                <!-- Header Section -->
-                                <div class="header-section">
-                                    <div class="logo-container">
-                                        <a href="https://skestate.com" class="logo-link" target="_blank">
-                                            <div class="logo-circle">SK</div>
-                                        </a>
-                                    </div>
-                                    <h1 class="company-name">SK Estate</h1>
-                                    <p class="company-subtitle">Performance Management System</p>
-                                </div>
-                                
-                                <!-- Content Section -->
-                                <div class="content-section">
-                                    <h2 class="welcome-title">Welcome to SK Estate, ' . htmlspecialchars($userName) . '!</h2>
-                                    
-                                    <p class="content-text">
-                                        Thank you for registering with our Performance Management System. We\'re excited to have you join our team and look forward to supporting your professional growth.
-                                    </p>
-                                    
-                                    <p class="content-text">
-                                        To complete your registration and activate your account, please verify your email address by clicking the button below:
-                                    </p>
-                                    
-                                    <div class="button-container">
-                                        <a href="' . $verificationUrl . '" class="verify-button" target="_blank">
-                                            Verify Your Email Address
-                                        </a>
-                                    </div>
-                                    
-                                    <p class="content-text">
-                                        If the button above doesn\'t work, you can copy and paste the following link into your browser:
-                                    </p>
-                                    
-                                    <div class="url-container">
-                                        ' . $verificationUrl . '
-                                    </div>
-                                    
-                                    <div class="important-notice">
-                                        <strong>Important Security Notice:</strong><br>
-                                        This verification link will expire in 24 hours for your account security. If you didn\'t create an account with SK Estate, please ignore this email and no further action is required.
-                                    </div>
-                                    
-                                    <div class="signature">
-                                        <p class="content-text">
-                                            <strong>Best regards,</strong><br>
-                                            SK Estate Human Resources Team<br>
-                                            Performance Management System
-                                        </p>
-                                    </div>
-                                </div>
-                                
-                                <!-- Footer Section -->
-                                <div class="footer-section">
-                                    <p class="footer-text">
-                                        &copy; ' . date('Y') . ' SK Estate. All rights reserved.
-                                    </p>
-                                    <p class="footer-text">
-                                        This is an automated message. Please do not reply to this email.
-                                    </p>
-                                    <p class="footer-text">
-                                        If you need assistance, please contact our support team through the official channels.
-                                    </p>
-                                </div>
-                            </div>
-                        </td>
-                    </tr>
-                </table>
-            </div>
-        </body>
-        </html>';
+                    <div class="footer">
+                        <p class="footer-text">
+                            &copy; ' . date('Y') . ' SKE. All rights reserved.
+                        </p>
+                        <p class="footer-text">
+                            This is an automated message. Please do not reply.
+                        </p>
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </div>
+</body>
+</html>';
     }
     
     private function getBaseUrl() {
@@ -388,7 +446,6 @@ class EmailService {
     }
 }
 
-// Helper function to generate secure verification token
 function generateVerificationToken() {
     return bin2hex(random_bytes(32));
 }
