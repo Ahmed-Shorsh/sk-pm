@@ -147,8 +147,10 @@ class EmailService {
         .logo-img {
             display: block;
             margin: 0 auto 16px auto;
-            max-width: 120px;
+         
             height: auto;
+              width:150px !important;
+             height:100% !important;
         }
         
         .logo-img-light {
@@ -372,7 +374,7 @@ class EmailService {
    <a href="https://ske.southkurdistan.com" target="_blank">
         <img src="' . $this->getBaseUrl() . '/../assets/logo/ske-dark.png"
              alt="SKE Logo"
-             width="100px"
+             width="150px"
              height="100%"
              style="display: block; margin: 0 auto;"
              class="logo-img">
