@@ -227,5 +227,21 @@ include __DIR__ . '/partials/intro_modal.php';   // first-login popup
 </div><!-- /container -->
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+<script>
+document.addEventListener('click', function (e) {
+  if (e.target.classList.contains('toggle-desc')) {
+    e.preventDefault();
+    const wrap = e.target.closest('.indicator-desc');
+    if (!wrap) return;
+    const descText = wrap.querySelector('.desc-text');
+    const full = wrap.dataset.full || '';
+    const short = wrap.dataset.short || '';
+    const expanded = wrap.classList.toggle('expanded');
+    descText.textContent = expanded ? full : short;
+    e.target.textContent = expanded ? '(show less)' : '(read more)';
+  }
+});
+</script>
+
 </body>
 </html>

@@ -1,16 +1,3 @@
-<?php
-/* =======================================================================
- * PARTIAL: eval_target_card.php
- * Renders one evaluation card for a single target employee / manager.
- *
- * Expects (already defined in the parent file):
- *   • $p               array  {user_id,name}
- *   • $indShared       array  indicators common to everyone
- *   • $indManager      array  manager-specific indicators
- *   • $roleId          int    current user role
- *   • $targetIsManager bool   true if the current card is the department manager
- * ======================================================================= */
-?>
 
 <div class="card mb-4 shadow-sm">
   <div class="card-header <?= !empty($targetIsManager) ? 'bg-secondary text-white' : '' ?>">
@@ -24,25 +11,54 @@
        * Helper to output one indicator row
        * ------------------------------------------------------------- */
       $row = function(array $ind) use ($p) {
-          $goal = (float)$ind['default_goal'];
-          ?>
-          <div class="row mb-3 align-items-center">
-            <label class="col-md-6 col-form-label">
-              <?= htmlspecialchars($ind['name']) ?>
-              <small class="text-muted">(Goal&nbsp;<?= $goal ?>)</small>
-            </label>
-            <div class="col-md-4">
-              <input
-                type="number" class="form-control"
-                step="0.1" min="0" max="<?= $goal ?>"
-                placeholder="0 – <?= $goal ?>"
-                name="ratings[<?= $p['user_id'] ?>][<?= $ind['indicator_id'] ?>]"
-                required
+        $goal = (float)$ind['default_goal'];
+        $desc = trim($ind['description'] ?? '');
+        $short = $desc;
+        $needsToggle = false;
+    
+        if ($desc !== '') {
+            // Split into sentences (simple heuristic)
+            $sentences = preg_split('/(?<=[.?!])\s+(?=[A-Z0-9])/u', $desc);
+            if ($sentences && count($sentences) > 2) {
+                $needsToggle = true;
+                $short = implode(' ', array_slice($sentences, 0, 2));
+            }
+        }
+        ?>
+        <div class="row mb-3 align-items-center">
+          <label class="col-md-6 col-form-label">
+            <?= htmlspecialchars($ind['name']) ?>
+            <small class="text-muted">(Goal&nbsp;<?= $goal ?>)</small>
+    
+            <?php if ($desc !== ''): ?>
+              <div
+                class="indicator-desc text-muted small mt-1"
+                data-full="<?= htmlspecialchars($desc, ENT_QUOTES) ?>"
+                data-short="<?= htmlspecialchars($short, ENT_QUOTES) ?>"
+                <?php if ($needsToggle): ?>data-toggle="1"<?php endif; ?>
               >
-            </div>
+                <span class="desc-text">
+                  <?= htmlspecialchars($needsToggle ? $short : $desc) ?>
+                </span>
+                <?php if ($needsToggle): ?>
+                  <a href="#" class="toggle-desc ms-1">(read more)</a>
+                <?php endif; ?>
+              </div>
+            <?php endif; ?>
+          </label>
+    
+          <div class="col-md-4">
+            <input
+              type="number" class="form-control"
+              step="0.1" min="0" max="<?= $goal ?>"
+              placeholder="0 – <?= $goal ?>"
+              name="ratings[<?= $p['user_id'] ?>][<?= $ind['indicator_id'] ?>]"
+              required
+            >
           </div>
-          <?php
-      };
+        </div>
+        <?php
+    };
     ?>
 
     <?php foreach ($indShared as $ind) $row($ind); ?>
