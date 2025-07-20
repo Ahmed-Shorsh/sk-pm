@@ -85,9 +85,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save'
 
     $actuals = $_POST['actual_value'] ?? [];
     $notes   = $_POST['notes']        ?? [];
+    $paths   = $_POST['task_file_path'] ?? [];  
+
+
+    foreach ($paths as $sid => $p) {
+      $p = trim($p);
+      if ($p !== '' && !preg_match('/^\\\\\\\\/', $p)) {
+          flashMessage('File path must start with \\\\ (network share path). Please correct the path format.', 'danger');
+          redirect("actuals_entry.php?month=$monthKey");
+      }
+      // (We trim and keep the sanitized path back in the array)
+      $paths[$sid] = $p;
+    }
 
     try {
-        $deptRepo->submitActuals($deptId, $monthKey, $actuals, $notes);
+        $deptRepo->submitActuals($deptId, $monthKey, $actuals, $notes, $paths);
         flashMessage('Actuals saved.', 'success');
     } catch (Exception $e) {
         flashMessage('Error: ' . $e->getMessage(), 'danger');
@@ -174,6 +186,7 @@ include __DIR__ . '/partials/intro_modal.php';
             <th class="text-end">Weight</th>
             <th class="text-end">Actual</th>
             <th>Notes</th>
+            <th>Task File Path</th> 
           </tr>
           </thead>
           <tbody>
@@ -205,6 +218,19 @@ include __DIR__ . '/partials/intro_modal.php';
                           placeholder="Optional notes"
                           <?= $windowOpen ? '' : 'disabled' ?>><?= htmlspecialchars($row['notes'] ?? '') ?></textarea>
               </td>
+         
+<td style="width:20rem">  
+    <input type="text"
+           name="task_file_path[<?= $row['snapshot_id'] ?>]"
+           value="<?= htmlspecialchars($row['task_file_path'] ?? '') ?>" 
+           class="form-control"
+           placeholder="Write in your Share Folder path"
+           <?= $windowOpen ? '' : 'disabled' ?>>
+    <div class="form-text">
+        For Example: <code>\\192.168.10.252\\Plan\\{Your Department Name}\\Folder\\MyFile.png</code>
+    </div>
+</td>
+
             </tr>
           <?php endforeach; ?>
           </tbody>

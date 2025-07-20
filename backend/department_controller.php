@@ -247,40 +247,39 @@ public function fetchDepartmentMembers(int $deptId): array
         int    $deptId,
         string $month,
         array  $actuals,
-        array  $notes = []
+        array  $notes = [],
+        array  $paths = []    // Added parameter for file paths
     ): bool {
         $this->assertMonth($month);
-
         $upd = $this->pdo->prepare(
             "UPDATE department_indicator_monthly
-             SET actual_value = :val,
-                 notes        = :note
-             WHERE snapshot_id = :sid
-               AND dept_id     = :d
-               AND month       = :m"
+             SET actual_value   = :val,
+                 notes          = :note,
+                 task_file_path = :path
+             WHERE snapshot_id  = :sid
+               AND dept_id      = :d
+               AND month        = :m"
         );
-
         $this->pdo->beginTransaction();
         try {
             foreach ($actuals as $sid => $value) {
                 $upd->execute([
                     ':val'  => $value,
                     ':note' => $notes[$sid] ?? '',
+                    ':path' => $paths[$sid] ?? '',   // bind the file path (or empty string if not provided)
                     ':sid'  => $sid,
                     ':d'    => $deptId,
                     ':m'    => $month,
                 ]);
             }
             $this->pdo->commit();
-
-            // ➜ Optionally: recalcDepartmentScores($deptId, $month);
             return true;
         } catch (PDOException $e) {
             $this->pdo->rollBack();
             throw $e;
         }
     }
-
+    
     // ---------------------------------------------------------------------
     // PRIVATE UTILS
     // ---------------------------------------------------------------------

@@ -103,6 +103,13 @@ include __DIR__ . '/partials/navbar.php';
     .submitted-employee {
       color: #198754;
     }
+    .data-container {
+    max-width:100% !important;
+    width:100% !important;
+    margin:0;
+    padding:1.5rem 1.5rem 2rem;
+    background:#fff;
+}
   </style>
 </head>
 <body class="bg-light font-serif">

@@ -153,38 +153,39 @@ try {
         }
 
         $sql = "SELECT
-                    dim.snapshot_id,
-                    DATE_FORMAT(dim.month, '%Y-%m') AS month,
-                    d.dept_name,
-                    d.share_path,  -- needed for Copy button
-                    COALESCE(NULLIF(dim.custom_name, ''), di.name) AS indicator_name,
-                    di.description AS indicator_description,
-                    dim.target_value,
-                    dim.actual_value,
-                    dim.weight,
-                    dim.unit_of_goal,
-                    dim.unit,
-                    dim.way_of_measurement,
-                    dim.notes,
-                    u.name AS created_by_name,
-                    DATE(dim.created_at) AS created_date,
-                    dim.is_custom,
-                    dim.audit_score,
-                    CASE
-                        WHEN dim.actual_value IS NULL THEN 'Pending'
-                        WHEN dim.actual_value >= dim.target_value THEN 'Achieved'
-                        WHEN dim.actual_value >= dim.target_value * 0.8 THEN 'Partially Achieved'
-                        ELSE 'Not Achieved'
-                    END AS achievement_status,
-                    CASE
-                        WHEN dim.actual_value IS NULL THEN 0
-                        ELSE ROUND(dim.actual_value / dim.target_value * 100, 2)
-                    END AS achievement_percentage
-                FROM department_indicator_monthly dim
-                JOIN departments d ON d.dept_id = dim.dept_id
-                LEFT JOIN department_indicators di ON di.indicator_id = dim.indicator_id
-                LEFT JOIN users u ON u.user_id = dim.created_by
-                WHERE 1=1";
+        dim.snapshot_id,
+        DATE_FORMAT(dim.month, '%Y-%m') AS month,
+        d.dept_name,
+        dim.task_file_path AS task_file_path,        -- ✅ task-specific path
+        COALESCE(NULLIF(dim.custom_name, ''), di.name) AS indicator_name,
+        di.description AS indicator_description,
+        dim.target_value,
+        dim.actual_value,
+        dim.weight,
+        dim.unit_of_goal,
+        dim.unit,
+        dim.way_of_measurement,
+        dim.notes,
+        u.name AS created_by_name,
+        DATE(dim.created_at) AS created_date,
+        dim.is_custom,
+        dim.audit_score,
+        CASE
+            WHEN dim.actual_value IS NULL THEN 'Pending'
+            WHEN dim.actual_value >= dim.target_value THEN 'Achieved'
+            WHEN dim.actual_value >= dim.target_value * 0.8 THEN 'Partially Achieved'
+            ELSE 'Not Achieved'
+        END AS achievement_status,
+        CASE
+            WHEN dim.actual_value IS NULL THEN 0
+            ELSE ROUND(dim.actual_value / dim.target_value * 100, 2)
+        END AS achievement_percentage
+    FROM department_indicator_monthly dim
+    JOIN departments d ON d.dept_id = dim.dept_id
+    LEFT JOIN department_indicators di ON di.indicator_id = dim.indicator_id
+    LEFT JOIN users u ON u.user_id = dim.created_by
+    WHERE 1=1";
+
 
         if ($conditions) {
             $sql .= ' AND ' . implode(' AND ', $conditions);
@@ -549,17 +550,18 @@ include __DIR__ . '/partials/navbar.php';
                         </div>
                       </td>
                       <td>
-                        <?php if (!empty($eval['share_path'])): ?>
-                          <button type="button"
-                                  class="btn btn-sm btn-outline-primary copy-path-btn"
-                                  data-path="<?= htmlspecialchars($eval['share_path'], ENT_QUOTES) ?>">
-                            Copy
-                          </button>
-                          <div class="copy-feedback small text-success mt-1 d-none">Copied!</div>
-                        <?php else: ?>
-                          <em>No path</em>
-                        <?php endif; ?>
-                      </td>
+    <?php if (!empty($eval['task_file_path'])): ?>
+        <button type="button"
+                class="btn btn-sm btn-outline-primary copy-path-btn"
+                data-path="<?= htmlspecialchars($eval['task_file_path'], ENT_QUOTES) ?>">
+            Copy
+        </button>
+        <div class="copy-feedback small text-success mt-1 d-none">Copied!</div>
+    <?php else: ?>
+        <em>No path</em>
+    <?php endif; ?>
+</td>
+
                       <td class="notes-col">
                         <?php
                           $noteText = trim($eval['notes'] ?? '');
