@@ -161,6 +161,7 @@ final class DepartmentAuditRepository
         return "
             SELECT DATE_FORMAT(dim.month,'%Y-%m') AS month,
                    d.dept_name,
+                   d.share_path,   
                    COALESCE(dim.custom_name,di.name) AS indicator_name,
                    di.description AS indicator_description,
                    dim.target_value,

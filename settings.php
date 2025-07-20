@@ -1,5 +1,5 @@
 <?php
-// File: settings.php (Admin – Global Settings)
+// File: settings.php  (Admin – Global Settings)
 
 require_once __DIR__ . '/backend/auth.php';
 require_once __DIR__ . '/backend/utils.php';
@@ -12,48 +12,68 @@ if (($_SESSION['role_id'] ?? 0) !== 1) {
     exit('<h1>Access Denied</h1>');
 }
 
-// Load current settings
-$settingsRepo     = new Backend\SettingsRepository($pdo);
-$current          = $settingsRepo->getAllSettings();
-$deadlineDays     = isset($current['evaluation_deadline_days'])
-                    ? (int)$current['evaluation_deadline_days']
-                    : 2;
-$individualWeight = isset($current['individual_score_weight'])
-                    ? (int)$current['individual_score_weight']
-                    : 30;
-$departmentWeight = isset($current['department_score_weight'])
-                    ? (int)$current['department_score_weight']
-                    : 70;
-$telegramRequired = isset($current['telegram_signup_required'])
-                    ? (bool)$current['telegram_signup_required']
-                    : false;
+/*--------------------------------------------------------------
+ | Load current settings
+ *-------------------------------------------------------------*/
+$settingsRepo = new Backend\SettingsRepository($pdo);
+$current      = $settingsRepo->getAllSettings();
 
-// Handle form submission
+$evalDeadlineDays     = isset($current['evaluation_deadline_days'])
+                      ? (int)$current['evaluation_deadline_days']
+                      : 2;           // Self-evaluation window
+
+$actualsDeadlineDays  = isset($current['actuals_entry_deadline_days'])
+                      ? (int)$current['actuals_entry_deadline_days']
+                      : 2;           // Managers’ actuals-entry window
+
+$individualWeight     = isset($current['individual_score_weight'])
+                      ? (int)$current['individual_score_weight']
+                      : 30;
+
+$departmentWeight     = isset($current['department_score_weight'])
+                      ? (int)$current['department_score_weight']
+                      : 70;
+
+$telegramRequired     = !empty($current['telegram_signup_required']);
+
+/*--------------------------------------------------------------
+ | Handle form submission
+ *-------------------------------------------------------------*/
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update') {
-    $newDeadline     = max(0, (int)($_POST['evaluation_deadline_days'] ?? 0));
-    $newIndWeight    = max(0, min(100, (int)($_POST['individual_score_weight'] ?? 0)));
-    $newDeptWeight   = max(0, min(100, (int)($_POST['department_score_weight'] ?? 0)));
-    $newTelegramReq  = isset($_POST['telegram_signup_required']) ? '1' : '0';
+
+    /** Deadlines (days) */
+    $newEvalDays    = max(0, (int)($_POST['evaluation_deadline_days']      ?? 0));
+    $newActualsDays = max(0, (int)($_POST['actuals_entry_deadline_days']   ?? 0));
+
+    /** Weights */
+    $newIndWeight  = max(0, min(100, (int)($_POST['individual_score_weight']  ?? 0)));
+    $newDeptWeight = max(0, min(100, (int)($_POST['department_score_weight']  ?? 0)));
+
+    /** Telegram signup requirement */
+    $newTelegramReq = isset($_POST['telegram_signup_required']) ? '1' : '0';
 
     if ($newIndWeight + $newDeptWeight !== 100) {
-        flashMessage('Individual and department weights must sum to 100%.', 'danger');
+        flashMessage('Individual and department weights must sum to 100 %.', 'danger');
     } else {
         $ok = $settingsRepo->updateSettings([
-            'evaluation_deadline_days' => (string)$newDeadline,
-            'individual_score_weight'  => (string)$newIndWeight,
-            'department_score_weight'  => (string)$newDeptWeight,
-            'telegram_signup_required' => $newTelegramReq
+            'evaluation_deadline_days'      => (string)$newEvalDays,
+            'actuals_entry_deadline_days'   => (string)$newActualsDays,
+            'individual_score_weight'       => (string)$newIndWeight,
+            'department_score_weight'       => (string)$newDeptWeight,
+            'telegram_signup_required'      => $newTelegramReq
         ]);
-        if ($ok) {
-            flashMessage('Settings updated successfully.', 'success');
-        } else {
-            flashMessage('Error: Failed to update settings.', 'danger');
-        }
+
+        flashMessage(
+            $ok ? 'Settings updated successfully.' : 'Error: Failed to update settings.',
+            $ok ? 'success' : 'danger'
+        );
         redirect('settings.php');
     }
 }
 
-// Include the admin navbar
+/*--------------------------------------------------------------
+ | Render page
+ *-------------------------------------------------------------*/
 include __DIR__ . '/partials/navbar.php';
 ?>
 <!DOCTYPE html>
@@ -76,60 +96,71 @@ include __DIR__ . '/partials/navbar.php';
     <form method="post">
       <input type="hidden" name="action" value="update">
 
+      <!-- Self-evaluation lock -->
       <div class="mb-3">
         <label class="form-label">Evaluation Lock Deadline (days before month-end)</label>
         <input
           type="number"
           name="evaluation_deadline_days"
           class="form-control"
-          value="<?= htmlspecialchars($deadlineDays, ENT_QUOTES) ?>"
+          value="<?= htmlspecialchars($evalDeadlineDays, ENT_QUOTES) ?>"
           min="0"
-          required
-        >
+          required>
         <div class="form-text">
-          Number of days before the end of the month when evaluations are locked.
-          Use 0 for no lock (always open until month-end).
+          Number of days before the end of the month when <strong>individual self-evaluations</strong> are locked.
+          Use 0 for no lock (open until the very last day).
         </div>
       </div>
 
+      <!-- Managers’ actuals-entry lock -->
       <div class="mb-3">
-        <label class="form-label">Individual Score Weight (%)</label>
+        <label class="form-label">Actuals Entry Lock Deadline (days before month-end)</label>
         <input
           type="number"
-          name="individual_score_weight"
+          name="actuals_entry_deadline_days"
           class="form-control"
-          value="<?= htmlspecialchars($individualWeight, ENT_QUOTES) ?>"
+          value="<?= htmlspecialchars($actualsDeadlineDays, ENT_QUOTES) ?>"
           min="0"
-          max="100"
-          required
-        >
+          required>
+        <div class="form-text">
+          Number of days before the end of the month when <strong>department managers</strong> can no longer enter
+          KPI actual values. Use 0 for no lock.
+        </div>
       </div>
 
-      <div class="mb-3">
-        <label class="form-label">Department Score Weight (%)</label>
-        <input
-          type="number"
-          name="department_score_weight"
-          class="form-control"
-          value="<?= htmlspecialchars($departmentWeight, ENT_QUOTES) ?>"
-          min="0"
-          max="100"
-          required
-        >
+      <!-- Weight settings -->
+      <div class="row g-3 mb-3">
+        <div class="col-md-6">
+          <label class="form-label">Individual Score Weight (%)</label>
+          <input
+            type="number"
+            name="individual_score_weight"
+            class="form-control"
+            value="<?= htmlspecialchars($individualWeight, ENT_QUOTES) ?>"
+            min="0" max="100" required>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Department Score Weight (%)</label>
+          <input
+            type="number"
+            name="department_score_weight"
+            class="form-control"
+            value="<?= htmlspecialchars($departmentWeight, ENT_QUOTES) ?>"
+            min="0" max="100" required>
+        </div>
+        <div class="form-text">
+          * The two weights must sum to&nbsp;100 %.
+        </div>
       </div>
 
-      <div class="form-text mb-3">
-        * The two weights must sum to 100%.
-      </div>
-
-      <div class="mb-3 form-check">
+      <!-- Telegram signup requirement -->
+      <div class="mb-4 form-check">
         <input
           type="checkbox"
           name="telegram_signup_required"
           id="chkTelegramReq"
           class="form-check-input"
-          <?= $telegramRequired ? 'checked' : '' ?>
-        >
+          <?= $telegramRequired ? 'checked' : '' ?>>
         <label class="form-check-label" for="chkTelegramReq">
           Require Telegram verification during user signup
         </label>

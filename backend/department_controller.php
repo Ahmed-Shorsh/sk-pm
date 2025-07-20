@@ -30,17 +30,21 @@ final class DepartmentRepository
     public function fetchAllDepartments(): array
     {
         $sql = "
-            SELECT d.dept_id,
-                   d.dept_name,
-                   d.manager_id,
-                   u.name AS manager_name
-            FROM   departments d
-            LEFT   JOIN users u ON d.manager_id = u.user_id
-            ORDER  BY d.dept_name
+            SELECT 
+                d.dept_id,
+                d.dept_name,
+                d.manager_id,
+                u.name         AS manager_name,
+                d.share_path   AS share_path
+            FROM departments d
+            LEFT JOIN users u
+              ON u.user_id = d.manager_id
+            ORDER BY d.dept_name
         ";
-
-        return $this->select($sql, []);
+        $stmt = $this->pdo->query($sql);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
+    
 
     /** Fetch all users who can be managers (role_id = 2 for Manager) */
     public function fetchAllManagers(): array
@@ -60,15 +64,24 @@ final class DepartmentRepository
         return $this->select($sql, []);
     }
 
-    public function createDepartment(string $name, ?int $managerId): int
-    {
-        $this->runExec(
-            'INSERT INTO departments (dept_name, manager_id) VALUES (:n, :m)',
-            [':n' => $name, ':m' => $managerId]
-        );
+    // public function createDepartment(string $name, ?int $managerId): int
+    // {
+    //     $this->runExec(
+    //         'INSERT INTO departments (dept_name, manager_id) VALUES (:n, :m)',
+    //         [':n' => $name, ':m' => $managerId]
+    //     );
 
+    //     return (int)$this->pdo->lastInsertId();
+    // }
+
+    public function createDepartment(string $name, ?int $managerId, ?string $path): int {
+        $this->runExec(
+            'INSERT INTO departments (dept_name, manager_id, share_path) VALUES (:n, :m, :p)',
+            [':n' => $name, ':m' => $managerId, ':p' => $path]
+        );
         return (int)$this->pdo->lastInsertId();
     }
+    
     private function selectOne(string $sql, array $params): ?array
     {
         $stmt = $this->pdo->prepare($sql);
@@ -99,13 +112,22 @@ public function fetchDepartmentMembers(int $deptId): array
 }
 
 
-    public function updateDepartment(int $id, string $name, ?int $managerId): bool
-    {
+    // public function updateDepartment(int $id, string $name, ?int $managerId): bool
+    // {
+    //     return $this->runExec(
+    //         'UPDATE departments SET dept_name = :n, manager_id = :m WHERE dept_id = :id',
+    //         [':n' => $name, ':m' => $managerId, ':id' => $id]
+    //     ) > 0;
+    // }
+
+    public function updateDepartment(int $id, string $name, ?int $managerId, ?string $path): bool {
         return $this->runExec(
-            'UPDATE departments SET dept_name = :n, manager_id = :m WHERE dept_id = :id',
-            [':n' => $name, ':m' => $managerId, ':id' => $id]
+            'UPDATE departments SET dept_name = :n, manager_id = :m, share_path = :p 
+             WHERE dept_id = :id',
+            [':n' => $name, ':m' => $managerId, ':p' => $path, ':id' => $id]
         ) > 0;
     }
+    
 
     public function deleteDepartment(int $id): bool
     {
