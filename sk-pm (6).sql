@@ -1,11 +1,11 @@
 -- phpMyAdmin SQL Dump
--- version 5.2.2
+-- version 5.2.1
 -- https://www.phpmyadmin.net/
 --
--- Host: localhost
--- Generation Time: Jul 19, 2025 at 07:44 AM
--- Server version: 8.0.41-32
--- PHP Version: 8.2.29
+-- Host: 127.0.0.1
+-- Generation Time: Jul 20, 2025 at 01:28 PM
+-- Server version: 10.4.32-MariaDB
+-- PHP Version: 8.2.12
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -18,7 +18,7 @@ SET time_zone = "+00:00";
 /*!40101 SET NAMES utf8mb4 */;
 
 --
--- Database: `dbvwgo85dtqpmm`
+-- Database: `sk-pm`
 --
 
 -- --------------------------------------------------------
@@ -28,19 +28,20 @@ SET time_zone = "+00:00";
 --
 
 CREATE TABLE `departments` (
-  `dept_id` int NOT NULL,
-  `dept_name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `manager_id` int DEFAULT NULL
+  `dept_id` int(11) NOT NULL,
+  `dept_name` varchar(100) NOT NULL,
+  `manager_id` int(11) DEFAULT NULL,
+  `share_path` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `departments`
 --
 
-INSERT INTO `departments` (`dept_id`, `dept_name`, `manager_id`) VALUES
-(1, 'HR', 3),
-(2, 'Finance', 4),
-(3, 'IT', 7);
+INSERT INTO `departments` (`dept_id`, `dept_name`, `manager_id`, `share_path`) VALUES
+(1, 'HR', 3, '\\\\192.168.10.252\\Plan\\HR Plans'),
+(2, 'Finance', 4, ''),
+(3, 'IT', 7, NULL);
 
 -- --------------------------------------------------------
 
@@ -49,17 +50,17 @@ INSERT INTO `departments` (`dept_id`, `dept_name`, `manager_id`) VALUES
 --
 
 CREATE TABLE `department_indicators` (
-  `indicator_id` int NOT NULL,
-  `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `description` text COLLATE utf8mb4_unicode_ci,
-  `responsible_departments` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `indicator_id` int(11) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `description` text DEFAULT NULL,
+  `responsible_departments` varchar(255) DEFAULT NULL,
   `default_goal` float NOT NULL,
-  `unit_of_goal` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `unit` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `way_of_measurement` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `default_weight` int DEFAULT NULL,
-  `sort_order` int DEFAULT NULL,
-  `active` tinyint(1) DEFAULT '1'
+  `unit_of_goal` varchar(50) DEFAULT NULL,
+  `unit` varchar(50) DEFAULT NULL,
+  `way_of_measurement` varchar(255) DEFAULT NULL,
+  `default_weight` int(11) DEFAULT NULL,
+  `sort_order` int(11) DEFAULT NULL,
+  `active` tinyint(1) DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
@@ -67,9 +68,10 @@ CREATE TABLE `department_indicators` (
 --
 
 INSERT INTO `department_indicators` (`indicator_id`, `name`, `description`, `responsible_departments`, `default_goal`, `unit_of_goal`, `unit`, `way_of_measurement`, `default_weight`, `sort_order`, `active`) VALUES
-(1, 'Employee Training Hours', 'Average training hours per employee per month', NULL, 20, 'hours', 'hours', 'Training attendance sheets', 20, 1, 1),
-(2, 'Budget Variance', 'Percentage difference between actual and planned budget', '2', 5, '%', '%', 'Monthly financial report', 30, 2, 1),
-(3, 'System Uptime', 'Percentage of core-system availability during business hours', '3', 99.9, '%', '%', 'Monitoring dashboard', 50, 3, 1);
+(2, 'Budget Variance', 'Percentage difference between actual and planned budget', '2', 5, '%', NULL, 'Monthly financial report', 30, 2, 1),
+(3, 'System Uptime', 'Percentage of core-system availability during business hours', '3', 99.9, '%', '%', 'Monitoring dashboard', 50, 3, 1),
+(5, 'departemnt test', 'Why Your Previous Modals Likely Failed\r\nCustom multi-select script threw an error → JS stopped → Bootstrap data API never ran.\r\n\r\nMultiple, conflicting Bootstrap versions (4 + 5).', '2,1,3', 10, 'hours', NULL, 'Training attendance sheets', 5, 4, 1),
+(6, 'test', 'test des', '1', 5, 'hours', NULL, 'Training attendance sheets', 5, 5, 1);
 
 -- --------------------------------------------------------
 
@@ -78,32 +80,36 @@ INSERT INTO `department_indicators` (`indicator_id`, `name`, `description`, `res
 --
 
 CREATE TABLE `department_indicator_monthly` (
-  `snapshot_id` int NOT NULL,
-  `indicator_id` int DEFAULT NULL,
-  `dept_id` int NOT NULL,
+  `snapshot_id` int(11) NOT NULL,
+  `indicator_id` int(11) DEFAULT NULL,
+  `dept_id` int(11) NOT NULL,
   `month` date NOT NULL,
-  `custom_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `is_custom` tinyint(1) DEFAULT '0',
+  `custom_name` varchar(255) DEFAULT NULL,
+  `is_custom` tinyint(1) DEFAULT 0,
   `target_value` float NOT NULL,
-  `weight` int NOT NULL,
-  `unit_of_goal` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `unit` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `way_of_measurement` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `created_by` int DEFAULT NULL,
+  `weight` int(11) NOT NULL,
+  `unit_of_goal` varchar(50) DEFAULT NULL,
+  `unit` varchar(50) DEFAULT NULL,
+  `way_of_measurement` varchar(255) DEFAULT NULL,
+  `created_by` int(11) DEFAULT NULL,
   `actual_value` float DEFAULT NULL,
-  `notes` text COLLATE utf8mb4_unicode_ci,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  `notes` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `audit_score` float DEFAULT NULL,
+  `task_file_path` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `department_indicator_monthly`
 --
 
-INSERT INTO `department_indicator_monthly` (`snapshot_id`, `indicator_id`, `dept_id`, `month`, `custom_name`, `is_custom`, `target_value`, `weight`, `unit_of_goal`, `unit`, `way_of_measurement`, `created_by`, `actual_value`, `notes`, `created_at`) VALUES
-(1, 1, 1, '2025-05-01', NULL, 0, 20, 20, 'hours', 'hours', 'Training attendance sheets', 3, 18, 'Achieved target for May', '2025-05-31 20:59:59'),
-(2, 2, 2, '2025-05-01', NULL, 0, 5, 30, '%', '%', 'Monthly financial report', 4, 4.2, 'Under budget', '2025-05-31 20:59:59'),
-(3, 3, 3, '2025-05-01', NULL, 0, 99.9, 50, '%', '%', 'Monitoring dashboard', 7, 99.7, 'Minor outage on 12 May', '2025-05-31 20:59:59'),
-(4, 1, 1, '2025-07-01', '', 0, 2, 1, '', '', '', 26, NULL, NULL, '2025-07-17 07:18:41');
+INSERT INTO `department_indicator_monthly` (`snapshot_id`, `indicator_id`, `dept_id`, `month`, `custom_name`, `is_custom`, `target_value`, `weight`, `unit_of_goal`, `unit`, `way_of_measurement`, `created_by`, `actual_value`, `notes`, `created_at`, `audit_score`, `task_file_path`) VALUES
+(2, 2, 2, '2025-05-01', NULL, 0, 5, 30, '%', '%', 'Monthly financial report', 4, 4.2, 'Under budget', '2025-05-31 20:59:59', 2.5, NULL),
+(3, 3, 3, '2025-05-01', NULL, 0, 99.9, 50, '%', '%', 'Monitoring dashboard', 7, 99.7, 'Minor outage on 12 May', '2025-05-31 20:59:59', 2.5, NULL),
+(4, NULL, 1, '2025-07-01', 'custom kpi', 1, 3, 5, 'hours', '', '', 19, 3, 'note for custom', '2025-07-19 12:12:43', 5, ''),
+(5, 5, 1, '2025-07-01', '', 0, 3, 3, '', '', '', 19, 0, '', '2025-07-19 12:27:03', 2.5, ''),
+(6, 6, 1, '2025-07-01', '', 0, 4, 5, '', '', '', 19, 0, '', '2025-07-19 15:09:23', 2.5, ''),
+(7, 2, 1, '2025-07-01', '', 0, 3, 1, '', '', '', 19, 2, 'majal nabw', '2025-07-20 10:45:56', 5, '\\\\192.168.10.252\\Plan\\PR & Media\\tech\\Group 25.png');
 
 -- --------------------------------------------------------
 
@@ -112,11 +118,11 @@ INSERT INTO `department_indicator_monthly` (`snapshot_id`, `indicator_id`, `dept
 --
 
 CREATE TABLE `history` (
-  `history_id` int NOT NULL,
-  `user_id` int NOT NULL,
-  `event_type` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `details` text COLLATE utf8mb4_unicode_ci,
-  `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  `history_id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `event_type` varchar(50) DEFAULT NULL,
+  `details` text DEFAULT NULL,
+  `timestamp` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
@@ -134,9 +140,9 @@ INSERT INTO `history` (`history_id`, `user_id`, `event_type`, `details`, `timest
 --
 
 CREATE TABLE `indicators_old` (
-  `indicator_id` int NOT NULL,
-  `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `archived_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  `indicator_id` int(11) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `archived_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
@@ -153,14 +159,14 @@ INSERT INTO `indicators_old` (`indicator_id`, `name`, `archived_at`) VALUES
 --
 
 CREATE TABLE `individual_evaluations` (
-  `evaluation_id` int NOT NULL,
-  `evaluator_id` int NOT NULL,
-  `evaluatee_id` int NOT NULL,
-  `indicator_id` int NOT NULL,
+  `evaluation_id` int(11) NOT NULL,
+  `evaluator_id` int(11) NOT NULL,
+  `evaluatee_id` int(11) NOT NULL,
+  `indicator_id` int(11) NOT NULL,
   `month` date NOT NULL,
   `rating` float NOT NULL,
-  `comments` text COLLATE utf8mb4_unicode_ci,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  `comments` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
@@ -171,7 +177,19 @@ INSERT INTO `individual_evaluations` (`evaluation_id`, `evaluator_id`, `evaluate
 (1, 1, 5, 1, '2025-05-01', 4, NULL, '2025-05-25 07:00:00'),
 (2, 5, 1, 1, '2025-05-01', 5, NULL, '2025-05-25 07:05:00'),
 (3, 3, 5, 3, '2025-05-01', 4, NULL, '2025-05-28 09:00:00'),
-(4, 4, 1, 3, '2025-05-01', 5, NULL, '2025-05-28 09:15:00');
+(4, 4, 1, 3, '2025-05-01', 5, NULL, '2025-05-28 09:15:00'),
+(11, 19, 3, 1, '2025-07-01', 3, 'd', '2025-07-19 08:16:05'),
+(12, 19, 3, 4, '2025-07-01', 2, 'd', '2025-07-19 08:16:05'),
+(13, 19, 3, 2, '2025-07-01', 3, 'd', '2025-07-19 08:16:05'),
+(14, 19, 3, 3, '2025-07-01', 3, 'd', '2025-07-19 08:16:05'),
+(15, 19, 5, 1, '2025-07-01', 3, 'bahawas', '2025-07-20 10:47:43'),
+(16, 19, 5, 4, '2025-07-01', 1, 'bahawas', '2025-07-20 10:47:43'),
+(17, 19, 5, 2, '2025-07-01', 3, 'bahawas', '2025-07-20 10:47:43'),
+(18, 19, 5, 5, '2025-07-01', 0, 'bahawas', '2025-07-20 10:47:43'),
+(19, 19, 21, 1, '2025-07-01', 3, '', '2025-07-20 10:47:43'),
+(20, 19, 21, 4, '2025-07-01', 2, '', '2025-07-20 10:47:43'),
+(21, 19, 21, 2, '2025-07-01', 0, '', '2025-07-20 10:47:43'),
+(22, 19, 21, 5, '2025-07-01', 0, '', '2025-07-20 10:47:43');
 
 -- --------------------------------------------------------
 
@@ -180,15 +198,15 @@ INSERT INTO `individual_evaluations` (`evaluation_id`, `evaluator_id`, `evaluate
 --
 
 CREATE TABLE `individual_indicators` (
-  `indicator_id` int NOT NULL,
-  `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `description` text COLLATE utf8mb4_unicode_ci,
-  `category` enum('individual','manager') COLLATE utf8mb4_unicode_ci NOT NULL,
-  `responsible_departments` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `indicator_id` int(11) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `description` text DEFAULT NULL,
+  `category` enum('individual','manager') NOT NULL,
+  `responsible_departments` varchar(255) DEFAULT NULL,
   `default_goal` float NOT NULL,
-  `default_weight` int DEFAULT NULL,
-  `sort_order` int NOT NULL,
-  `active` tinyint(1) DEFAULT '1'
+  `default_weight` int(11) DEFAULT NULL,
+  `sort_order` int(11) NOT NULL,
+  `active` tinyint(1) DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
@@ -197,8 +215,10 @@ CREATE TABLE `individual_indicators` (
 
 INSERT INTO `individual_indicators` (`indicator_id`, `name`, `description`, `category`, `responsible_departments`, `default_goal`, `default_weight`, `sort_order`, `active`) VALUES
 (1, 'Teamwork', 'Collaborates effectively with team members', 'individual', '1,2,3', 4, 20, 1, 1),
-(2, 'Communication', 'Communicates clearly and effectively', 'individual', '1,2,3', 4, 20, 2, 1),
-(3, 'Leadership', 'Guides and inspires others toward goals', 'manager', '1,2,3', 4, 30, 1, 1);
+(2, 'Communication', 'Communicates clearly and effectively', 'individual', NULL, 4, 20, 2, 1),
+(3, 'Leadership', 'Guides and inspires others toward goals', 'manager', '1,2,3', 4, 30, 1, 1),
+(4, 'name', 'description added. edited', 'individual', '', 2, NULL, 1, 1),
+(5, 'test', 'I’ve replaced the entire individual_indicators.php with the updated version—removing the “Responsible Departments” field, adding the truncated descriptions + “read more” modal, and highlighting manager rows in pale yellow. Let me know if you’d like any tweaks!', 'individual', NULL, 3, NULL, 5, 1);
 
 -- --------------------------------------------------------
 
@@ -207,10 +227,10 @@ INSERT INTO `individual_indicators` (`indicator_id`, `name`, `description`, `cat
 --
 
 CREATE TABLE `reminders_log` (
-  `reminder_id` int NOT NULL,
-  `user_id` int NOT NULL,
-  `type` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `sent_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  `reminder_id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `type` varchar(100) DEFAULT NULL,
+  `sent_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
@@ -228,8 +248,8 @@ INSERT INTO `reminders_log` (`reminder_id`, `user_id`, `type`, `sent_at`) VALUES
 --
 
 CREATE TABLE `roles` (
-  `role_id` int NOT NULL,
-  `role_name` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL
+  `role_id` int(11) NOT NULL,
+  `role_name` varchar(50) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
@@ -248,13 +268,13 @@ INSERT INTO `roles` (`role_id`, `role_name`) VALUES
 --
 
 CREATE TABLE `scores` (
-  `score_id` int NOT NULL,
-  `user_id` int NOT NULL,
+  `score_id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
   `month` date NOT NULL,
-  `indicator_id` int DEFAULT NULL,
+  `indicator_id` int(11) DEFAULT NULL,
   `score` float DEFAULT NULL,
-  `category` enum('individual','manager') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `dept_id` int DEFAULT NULL,
+  `category` enum('individual','manager') DEFAULT NULL,
+  `dept_id` int(11) DEFAULT NULL,
   `final_score` float DEFAULT NULL,
   `dept_score` float DEFAULT NULL,
   `individual_score` float DEFAULT NULL
@@ -276,8 +296,8 @@ INSERT INTO `scores` (`score_id`, `user_id`, `month`, `indicator_id`, `score`, `
 --
 
 CREATE TABLE `settings` (
-  `setting_key` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `setting_value` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL
+  `setting_key` varchar(64) NOT NULL,
+  `setting_value` varchar(255) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
@@ -286,7 +306,7 @@ CREATE TABLE `settings` (
 
 INSERT INTO `settings` (`setting_key`, `setting_value`) VALUES
 ('department_score_weight', '70'),
-('evaluation_deadline_days', '2'),
+('evaluation_deadline_days', '0'),
 ('individual_score_weight', '30'),
 ('telegram_signup_required', '0');
 
@@ -297,21 +317,21 @@ INSERT INTO `settings` (`setting_key`, `setting_value`) VALUES
 --
 
 CREATE TABLE `users` (
-  `user_id` int NOT NULL,
-  `name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `email` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `password_hash` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `role_id` int NOT NULL,
-  `dept_id` int DEFAULT NULL,
-  `phone` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `telegram_chat_id` bigint DEFAULT NULL,
-  `position` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `user_id` int(11) NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `email` varchar(255) NOT NULL,
+  `password_hash` varchar(255) NOT NULL,
+  `role_id` int(11) NOT NULL,
+  `dept_id` int(11) DEFAULT NULL,
+  `phone` varchar(20) DEFAULT NULL,
+  `telegram_chat_id` bigint(20) DEFAULT NULL,
+  `position` varchar(100) DEFAULT NULL,
   `birth_date` date DEFAULT NULL,
   `hire_date` date DEFAULT NULL,
-  `rating_window_days` int DEFAULT '0',
-  `active` tinyint(1) DEFAULT '1',
-  `email_verified` tinyint(1) DEFAULT '0',
-  `email_verification_token` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `rating_window_days` int(11) DEFAULT 0,
+  `active` tinyint(1) DEFAULT 1,
+  `email_verified` tinyint(1) DEFAULT 0,
+  `email_verification_token` varchar(255) DEFAULT NULL,
   `email_verification_expires` datetime DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -327,9 +347,8 @@ INSERT INTO `users` (`user_id`, `name`, `email`, `password_hash`, `role_id`, `de
 (5, 'Farah Karim', 'farah.karim@southkurdistan.com', '$2y$10$tyKZ4sV8GEd9M15wkrrkdu8HctVagMUChZIgdXkpohUt/uMFEatui', 3, 1, '+9647700000003', NULL, 'Recruiter', '1995-02-20', '2024-03-01', 0, 1, 1, NULL, NULL),
 (6, 'Omar Hameed', 'omar.hameed@southkurdistan.com', '$2y$10$tyKZ4sV8GEd9M15wkrrkdu8HctVagMUChZIgdXkpohUt/uMFEatui', 3, 3, '+9647700000004', NULL, 'IT Support', '1992-07-12', '2022-08-15', 0, 1, 1, NULL, NULL),
 (7, 'Layla Qadir', 'layla.qadir@southkurdistan.com', '$2y$10$tyKZ4sV8GEd9M15wkrrkdu8HctVagMUChZIgdXkpohUt/uMFEatui', 2, 3, '+9647700000005', NULL, 'IT Manager', '1987-09-05', '2018-11-01', 2, 1, 1, NULL, NULL),
-(25, 'Binar bahadin', 'irobotesports@gmail.com', '$2y$10$FBjB3tXPMT/Z8RVoMM6QIuXlrU88o0vayW3asKYQFHJTxiklqPoF2', 3, 2, '+9647711553618', NULL, 'Chaki', '1998-05-30', '2025-07-30', 0, 1, 0, 'f49e70272488a0b4341a2b91ecf7eaccac47ba92b09bd743a1588ce0b0d6506b', '2025-07-17 11:56:59'),
-(26, 'Hedayat Muhamad Ahmad', 'hedayat.daikcity@gmail.com', '$2y$10$e3cZbxPU/kW33wGyeBcia.OYxBPBDxP5QWUnB1YeEAVxq5d9Ae2Ri', 2, 1, '+9647501765595', NULL, 'HR &amp; Admin Manager', '1986-01-01', '2024-03-23', 0, 1, 1, NULL, NULL),
-(27, 'Ahmed Shorsh', 'ahmad.shorsh@southkurdistan.com', '$2y$10$c3YWyn.F60MJRyxsQuKlYu58OAwaYkMW3Cd3jM1vPowZMNE8k8ohe', 3, 2, '+9647719921065', NULL, 'IT Support', NULL, NULL, 0, 1, 1, NULL, NULL);
+(19, 'Ahmed Shorsh', 'ahmad.shorsh@southkurdistan.com', '$2y$10$6p5R/hgZRaaGgM/22n6kheOraxWQXMuiybkICv8QYWGJ.nFtqhcgq', 2, 1, '+96477199210', NULL, 'IT Support', '2025-07-01', '2025-07-02', 0, 1, 1, NULL, NULL),
+(21, 'test local', 'ahmadhamad.one@gmail.com', '$2y$10$ewNcVDG00AF823F6KVI6AOvpVjl7RTqWWsLvqtt/qfbbW8tjL5kQO', 3, 1, '+9647719921065', NULL, 'fd', NULL, NULL, 0, 1, 0, '71a1491a83d466747ccb4768c7827f900a1fcf7bc5b9504d437cf46ee6aad4e9', '2025-07-17 14:33:26');
 
 -- --------------------------------------------------------
 
@@ -338,12 +357,12 @@ INSERT INTO `users` (`user_id`, `name`, `email`, `password_hash`, `role_id`, `de
 --
 
 CREATE TABLE `user_flags` (
-  `flag_id` int NOT NULL,
-  `user_id` int NOT NULL,
-  `flag` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `value` text COLLATE utf8mb4_unicode_ci,
-  `flag_name` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `seen_at` datetime DEFAULT CURRENT_TIMESTAMP
+  `flag_id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `flag` varchar(100) NOT NULL,
+  `value` text DEFAULT NULL,
+  `flag_name` varchar(100) DEFAULT NULL,
+  `seen_at` datetime DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
@@ -353,8 +372,7 @@ CREATE TABLE `user_flags` (
 INSERT INTO `user_flags` (`flag_id`, `user_id`, `flag`, `value`, `flag_name`, `seen_at`) VALUES
 (1, 2, '', NULL, 'intro_seen', '2025-06-16 11:41:20'),
 (2, 1, '', NULL, 'intro_seen', '2025-06-24 09:47:02'),
-(6, 26, '', NULL, 'intro_seen', '2025-07-17 07:02:46'),
-(7, 27, '', NULL, 'intro_seen', '2025-07-19 07:25:21');
+(4, 19, '', NULL, 'intro_seen', '2025-07-15 14:07:02');
 
 -- --------------------------------------------------------
 
@@ -363,10 +381,10 @@ INSERT INTO `user_flags` (`flag_id`, `user_id`, `flag`, `value`, `flag_name`, `s
 --
 
 CREATE TABLE `user_telegram` (
-  `user_id` int NOT NULL,
-  `token` varchar(64) COLLATE utf8mb4_general_ci NOT NULL,
-  `telegram_chat_id` bigint DEFAULT NULL,
-  `verified` tinyint(1) NOT NULL DEFAULT '0'
+  `user_id` int(11) NOT NULL,
+  `token` varchar(64) NOT NULL,
+  `telegram_chat_id` bigint(20) DEFAULT NULL,
+  `verified` tinyint(1) NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -374,9 +392,8 @@ CREATE TABLE `user_telegram` (
 --
 
 INSERT INTO `user_telegram` (`user_id`, `token`, `telegram_chat_id`, `verified`) VALUES
-(25, '5646c8385890b581b18bf1340669575c', NULL, 0),
-(26, '63d863e8f185742f8400fa4bb3fda418', NULL, 0),
-(27, '3a4619614ebe5bb0dfc999e40eddf0a1', NULL, 0);
+(19, '018888634c24bbd747855c407378d484', NULL, 0),
+(21, 'b4864111d745d0ab8315ddffe56af66b', NULL, 0);
 
 --
 -- Indexes for dumped tables
@@ -490,73 +507,73 @@ ALTER TABLE `user_telegram`
 -- AUTO_INCREMENT for table `departments`
 --
 ALTER TABLE `departments`
-  MODIFY `dept_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `dept_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `department_indicators`
 --
 ALTER TABLE `department_indicators`
-  MODIFY `indicator_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `indicator_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- AUTO_INCREMENT for table `department_indicator_monthly`
 --
 ALTER TABLE `department_indicator_monthly`
-  MODIFY `snapshot_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `snapshot_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT for table `history`
 --
 ALTER TABLE `history`
-  MODIFY `history_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `history_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `indicators_old`
 --
 ALTER TABLE `indicators_old`
-  MODIFY `indicator_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `indicator_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `individual_evaluations`
 --
 ALTER TABLE `individual_evaluations`
-  MODIFY `evaluation_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `evaluation_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=23;
 
 --
 -- AUTO_INCREMENT for table `individual_indicators`
 --
 ALTER TABLE `individual_indicators`
-  MODIFY `indicator_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `indicator_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT for table `reminders_log`
 --
 ALTER TABLE `reminders_log`
-  MODIFY `reminder_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `reminder_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `roles`
 --
 ALTER TABLE `roles`
-  MODIFY `role_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+  MODIFY `role_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- AUTO_INCREMENT for table `scores`
 --
 ALTER TABLE `scores`
-  MODIFY `score_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `score_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `user_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=28;
+  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=22;
 
 --
 -- AUTO_INCREMENT for table `user_flags`
 --
 ALTER TABLE `user_flags`
-  MODIFY `flag_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `flag_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- Constraints for dumped tables
