@@ -1,785 +1,752 @@
 <?php
-require_once 'config.php';
+declare(strict_types=1);
 
-$message = '';
-$messageType = '';
+// Include core backend files and enforce authentication
+require_once __DIR__ . '/backend/auth.php';
+require_once __DIR__ . '/backend/utils.php';
+require_once __DIR__ . '/backend/user_controller.php';
+require_once __DIR__ . '/backend/report_controller.php';
 
-// Initialize variables to preserve form data
-$studentId = '';
-$name = '';
-$university = '';
-$otherUniversity = '';
-$email = '';
-$phone = '';
-$academicYear = '';
+use Backend\ReportRepository;
 
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $pdo = getDBConnection();
-    $userIP = getUserIP();
+secureSessionStart();
+checkLogin();  // Redirects to login if not authenticated
+
+// Role ID constants and retrieve logged-in user
+const ROLE_ADMIN    = 1;
+const ROLE_MANAGER  = 2;
+const ROLE_EMPLOYEE = 3;
+
+$user = getUser($_SESSION['user_id'] ?? 0);
+if (!$user) {
+    logoutUser();
+    redirect('login.php');
+}
+
+$roleId     = (int)$user['role_id'];
+$deptId     = (int)($user['dept_id'] ?? 0);
+$cycleMonth = date('Y-m-01');  // current performance cycle (first day of current month)
+
+global $pdo;
+$reportRepo = new ReportRepository($pdo);
+
+// Helper function to safely round numbers
+function safeRound($value, int $precision = 2): float {
+    return round((float)($value ?? 0), $precision);
+}
+
+// Helper function to get available years and months
+function getAvailableMonthsGrouped($reportRepo): array {
+    $scoreMonths = $reportRepo->getScoreMonths();
+    $grouped = [];
     
-    // Preserve form data
-    $studentId = trim($_POST['student_id']);
-    $name = trim($_POST['name']);
-    $university = trim($_POST['university']);
-    $otherUniversity = trim($_POST['other_university'] ?? '');
-    $email = trim($_POST['email']);
-    $phone = trim($_POST['phone']);
-    $academicYear = trim($_POST['academic_year']);
-    
-    // Check rate limit
-    if (!checkRateLimit($pdo, $userIP)) {
-        $message = 'Too many attempts. Please try again later.';
-        $messageType = 'error';
-    } else {
-        // Validate and sanitize input
-        $errors = [];
+    foreach ($scoreMonths as $month) {
+        $year = date('Y', strtotime($month));
+        $monthName = date('F', strtotime($month));
+        $monthValue = date('Y-m-01', strtotime($month));
         
-        // Validation
-        if (empty($studentId)) {
-            $errors[] = 'Student ID is required';
+        if (!isset($grouped[$year])) {
+            $grouped[$year] = [];
         }
         
-        if (empty($name)) {
-            $errors[] = 'Name is required';
-        }
-        
-        if (empty($university)) {
-            $errors[] = 'University is required';
-        }
-        
-        if ($university === 'Other' && empty($otherUniversity)) {
-            $errors[] = 'Please specify your university';
-        }
-        
-        if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $errors[] = 'Valid email is required';
-        }
-        
-        if (empty($phone) || !preg_match('/^[0-9]{10}$/', $phone)) {
-            $errors[] = 'Phone number must be in format +964XXXXXXXXXX';
-        }
-        
-        if (empty($academicYear)) {
-            $errors[] = 'Academic year is required';
-        }
-        
-        // Check for duplicate student ID
-        if (empty($errors)) {
-            $stmt = $pdo->prepare("SELECT id FROM students WHERE student_id = ?");
-            $stmt->execute([$studentId]);
-            if ($stmt->fetch()) {
-                $errors[] = 'This student ID is already registered';
-            }
-        }
-        
-        if (empty($errors)) {
-            // Insert into database
-            $stmt = $pdo->prepare("INSERT INTO students (student_id, name, university, other_university, email, phone, academic_year, voucher_code, ip_address) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            
-            $finalUniversity = ($university === 'Other') ? $otherUniversity : $university;
-            $fullPhone = '+964' . $phone; // Add +964 prefix before storing
-            
-            if ($stmt->execute([$studentId, $name, $finalUniversity, $otherUniversity, $email, $fullPhone, $academicYear, VOUCHER_CODE, $userIP])) {
-                // Send confirmation email
-                $emailSubject = 'Your Highcrest Hotel Student Voucher - Confirmation';
-                $emailBody = generateConfirmationEmail($name, $studentId, $finalUniversity, VOUCHER_CODE);
-                
-                if (sendEmail($email, $name, $emailSubject, $emailBody)) {
-                    $message = 'Registration successful! Please check your email for voucher details.';
-                    $messageType = 'success';
-                    
-                    // Clear form data on successful submission
-                    $studentId = '';
-                    $name = '';
-                    $university = '';
-                    $otherUniversity = '';
-                    $email = '';
-                    $phone = '';
-                    $academicYear = '';
-                } else {
-                    $message = 'Registration successful, but email could not be sent. Please contact us.';
-                    $messageType = 'warning';
-                    
-                    // Clear form data on successful submission
-                    $studentId = '';
-                    $name = '';
-                    $university = '';
-                    $otherUniversity = '';
-                    $email = '';
-                    $phone = '';
-                    $academicYear = '';
-                }
-            } else {
-                $message = 'Registration failed. Please try again.';
-                $messageType = 'error';
-            }
-        } else {
-            $message = implode('<br>', $errors);
-            $messageType = 'error';
-        }
+        $grouped[$year][] = [
+            'name' => $monthName,
+            'value' => $monthValue,
+            'has_data' => true
+        ];
     }
-}
-
-function generateConfirmationEmail($name, $studentId, $university, $voucherCode) {
-    $expiryDate = date('F j, Y', strtotime(VOUCHER_EXPIRY));
     
-    return "
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset='UTF-8'>
-        <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-        <title>Highcrest Hotel - Student Voucher Confirmation</title>
-    </head>
-    <body style='margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f4;'>
-        <table width='100%' border='0' cellspacing='0' cellpadding='0' style='background-color: #f4f4f4; padding: 20px;'>
-            <tr>
-                <td align='center'>
-                    <table width='600' border='0' cellspacing='0' cellpadding='0' style='background-color: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 8px rgba(0,0,0,0.1);'>
-                        <!-- Header -->
-                        <tr>
-                            <td style='background: linear-gradient(135deg, #4a90a4 0%, #2c5f73 100%); padding: 30px; text-align: center;'>
-                                <h1 style='color: #ffffff; margin: 0; font-size: 28px; font-weight: bold;'>Highcrest Hotel</h1>
-                                <p style='color: #ffffff; margin: 5px 0 0 0; font-size: 16px;'>★ ★ ★ ★ ★</p>
-                                <p style='color: #ffffff; margin: 10px 0 0 0; font-size: 18px; font-weight: 300;'>The First to Shine</p>
-                            </td>
-                        </tr>
-                        
-                        <!-- Content -->
-                        <tr>
-                            <td style='padding: 40px 30px;'>
-                                <h2 style='color: #2c5f73; margin: 0 0 20px 0; font-size: 24px;'>Registration Confirmed!</h2>
-                                
-                                <p style='color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;'>
-                                    Dear <strong>" . htmlspecialchars($name) . "</strong>,
-                                </p>
-                                
-                                <p style='color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;'>
-                                    Thank you for registering for our exclusive student discount program! Your registration has been successfully processed.
-                                </p>
-                                
-                                <!-- Voucher Details -->
-                                <table width='100%' border='0' cellspacing='0' cellpadding='0' style='background-color: #f8f9fa; border-radius: 8px; margin: 20px 0;'>
-                                    <tr>
-                                        <td style='padding: 20px;'>
-                                            <h3 style='color: #2c5f73; margin: 0 0 15px 0; font-size: 20px;'>Your Voucher Details</h3>
-                                            <p style='margin: 8px 0; color: #333333; font-size: 14px;'><strong>Student ID:</strong> " . htmlspecialchars($studentId) . "</p>
-                                            <p style='margin: 8px 0; color: #333333; font-size: 14px;'><strong>University:</strong> " . htmlspecialchars($university) . "</p>
-                                            <p style='margin: 8px 0; color: #333333; font-size: 14px;'><strong>Discount:</strong> 20% off</p>
-                                            <p style='margin: 8px 0; color: #333333; font-size: 14px;'><strong>Valid Until:</strong> " . $expiryDate . "</p>
-                                        </td>
-                                    </tr>
-                                </table>
-                                
-                                <!-- How to Use -->
-                                <h3 style='color: #2c5f73; margin: 20px 0 15px 0; font-size: 18px;'>How to Use Your Voucher</h3>
-                                <ol style='color: #333333; font-size: 14px; line-height: 1.6; padding-left: 20px;'>
-                                    <li>Show your student ID at time of use</li>
-                                    <li>Present this voucher (digital or printed)</li>
-                                    <li>Valid for Food & Beverages or SPA Services</li>
-                                    <li>One voucher per visit</li>
-                                </ol>
-                                
-                                <p style='color: #666666; font-size: 14px; line-height: 1.6; margin: 20px 0 0 0;'>
-                                    We look forward to welcoming you to Highcrest Hotel!
-                                </p>
-                            </td>
-                        </tr>
-                        
-                        <!-- Footer -->
-                        <tr>
-                            <td style='background-color: #2c5f73; padding: 20px; text-align: center;'>
-                                <p style='color: #ffffff; margin: 0; font-size: 14px;'>
-                                    <strong>Highcrest Hotel</strong><br>
-                                    Phone: +964 770 818 1336 | +964 770 818 1337<br>
-                                 <p style='color: #ffffff;'>www.highcresthotel.com </p>   
-                                </p>
-                            </td>
-                        </tr>
-                    </table>
-                </td>
-            </tr>
-        </table>
-    </body>
-    </html>";
+    // Add current year if not present
+    $currentYear = date('Y');
+    if (!isset($grouped[$currentYear])) {
+        $grouped[$currentYear] = [];
+    }
+    
+    // Fill in missing months for each year
+    foreach ($grouped as $year => &$months) {
+        $existingMonths = array_column($months, 'value');
+        for ($m = 1; $m <= 12; $m++) {
+            $monthValue = $year . '-' . sprintf('%02d', $m) . '-01';
+            if (!in_array($monthValue, $existingMonths)) {
+                $months[] = [
+                    'name' => date('F', mktime(0, 0, 0, $m, 1)),
+                    'value' => $monthValue,
+                    'has_data' => false
+                ];
+            }
+        }
+        
+        // Sort months chronologically
+        usort($months, function($a, $b) {
+            return strtotime($a['value']) - strtotime($b['value']);
+        });
+    }
+    
+    // Sort years in descending order
+    krsort($grouped);
+    
+    return $grouped;
 }
-?>
 
+// Get year/month selection
+$availableMonths = getAvailableMonthsGrouped($reportRepo);
+$selectedYear = $_GET['year'] ?? date('Y');
+$selectedMonth = $_GET['month'] ?? date('m');
+$selMonth = $selectedYear . '-' . sprintf('%02d', (int)$selectedMonth) . '-01';
+
+// Validate selection - if no data exists for selected month, use latest available
+$scoreMonths = $reportRepo->getScoreMonths();
+if (!in_array($selMonth, $scoreMonths) && !empty($scoreMonths)) {
+    $selMonth = $scoreMonths[0]; // Use latest available month
+    $selectedYear = date('Y', strtotime($selMonth));
+    $selectedMonth = date('m', strtotime($selMonth));
+}
+
+// Common summary metrics (visible to all roles)
+$totalUsers = $reportRepo->totalActiveUsers();
+$totalDepts = $reportRepo->totalDepartments();
+$activeDeptsNow = $reportRepo->activeDeptCountForMonth($cycleMonth);
+
+// Role-specific pending counts (default 0 if not applicable)
+$pendingPlans   = 0;
+$pendingActuals = 0;
+$pendingEvals   = 0;
+if ($roleId === ROLE_MANAGER) {
+    // Manager: pending plan entries and actuals for their department (current month)
+    $pendingPlans   = $reportRepo->pendingPlanEntries($deptId, $cycleMonth);
+    $pendingActuals = $reportRepo->pendingActuals($deptId, $cycleMonth);
+} elseif ($roleId === ROLE_EMPLOYEE) {
+    // Employee: pending peer evaluations to submit (in their department)
+    $pendingEvals   = $reportRepo->pendingEvaluations($user['user_id'], $cycleMonth);
+}
+
+// Include UI partials (navbar, intro modal)
+include __DIR__ . '/partials/navbar.php';
+include __DIR__ . '/partials/intro_modal.php';
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Highcrest Hotel - Student Registration</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --primary-color: #4a90a4;
-            --secondary-color: #2c5f73;
-            --accent-color: #7bb3c0;
-            --text-dark: #2c3e50;
-            --text-light: #6c757d;
-            --bg-light: #f8f9fa;
-            --white: #ffffff;
-            --success: #28a745;
-            --warning: #ffc107;
-            --error: #dc3545;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
-            min-height: 100vh;
-            color: var(--text-dark);
-            line-height: 1.6;
-        }
-
-        .container-fluid {
-            padding: 0;
-        }
-
-        .main-wrapper {
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            padding: 20px 0;
-        }
-
-        .form-container {
-            background: var(--white);
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            overflow: hidden;
-            max-width: 600px;
-            margin: 0 auto;
-            position: relative;
-        }
-
-        .form-header {
-            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
-            padding: 40px 30px;
-            text-align: center;
-            color: var(--white);
-            position: relative;
-        }
-
-        .form-header::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="mountains" patternUnits="userSpaceOnUse" width="50" height="20"><polygon points="0,20 25,0 50,20" fill="rgba(255,255,255,0.1)"/></pattern></defs><rect width="100" height="100" fill="url(%23mountains)"/></svg>');
-            opacity: 0.3;
-        }
-
-        .form-header h1 {
-            font-size: 2.5rem;
-            font-weight: 700;
-            margin-bottom: 10px;
-            position: relative;
-            z-index: 1;
-        }
-
-        .form-header .stars {
-            color: #ffd700;
-            font-size: 1.2rem;
-            margin-bottom: 10px;
-            position: relative;
-            z-index: 1;
-        }
-
-        .form-header .tagline {
-            font-size: 1.1rem;
-            font-weight: 300;
-            opacity: 0.9;
-            position: relative;
-            z-index: 1;
-        }
-
-        .form-header .discount-badge {
-            background: rgba(255,255,255,0.2);
-            border: 2px solid rgba(255,255,255,0.3);
-            border-radius: 50px;
-            padding: 15px 25px;
-            margin: 20px 0;
-            display: inline-block;
-            position: relative;
-            z-index: 1;
-        }
-
-        .form-header .discount-badge .discount-text {
-            font-size: 1.5rem;
-            font-weight: 600;
-            margin-bottom: 5px;
-        }
-
-        .form-header .discount-badge .discount-subtitle {
-            font-size: 0.9rem;
-            opacity: 0.8;
-        }
-
-        .form-body {
-            padding: 40px 30px;
-        }
-
-        .form-title {
-            color: var(--secondary-color);
-            font-size: 1.8rem;
-            font-weight: 600;
-            margin-bottom: 30px;
-            text-align: center;
-        }
-
-        .form-group {
-            margin-bottom: 25px;
-        }
-
-        .form-label {
-            color: var(--text-dark);
-            font-weight: 500;
-            margin-bottom: 8px;
-            display: block;
-            font-size: 0.95rem;
-        }
-
-        .form-control {
-            border: 2px solid #e1e5e9;
-            border-radius: 10px;
-            padding: 12px 16px;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-            background: var(--white);
-        }
-
-        .form-control:focus {
-            border-color: var(--primary-color);
-            box-shadow: 0 0 0 3px rgba(74, 144, 164, 0.1);
-            outline: none;
-        }
-
-        .form-control:invalid:not(:placeholder-shown) {
-    border-color: var(--error);
-}
-
-.form-control.was-validated:invalid {
-    border-color: var(--error);
-}
-
-.form-select {
-    cursor: pointer;
-    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 0.75rem center;
-    background-size: 16px 12px;
-}
-        .input-group {
-            position: relative;
-        }
-
-        .input-group-text {
-            background: var(--bg-light);
-            border: 2px solid #e1e5e9;
-            border-right: none;
-            border-radius: 10px 0 0 10px;
-            font-weight: 500;
-            color: var(--text-dark);
-        }
-
-        .input-group .form-control {
-            border-left: none;
-            border-radius: 0 10px 10px 0;
-        }
-
-        .input-group:focus-within .input-group-text {
-            border-color: var(--primary-color);
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
-            border: none;
-            border-radius: 10px;
-            padding: 15px 40px;
-            font-size: 1.1rem;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(74, 144, 164, 0.3);
-        }
-
-        .alert {
-            border: none;
-            border-radius: 10px;
-            padding: 15px 20px;
-            margin-bottom: 25px;
-            font-weight: 500;
-        }
-
-        .alert-success {
-            background: rgba(40, 167, 69, 0.1);
-            color: var(--success);
-            border-left: 4px solid var(--success);
-        }
-
-        .alert-danger {
-            background: rgba(220, 53, 69, 0.1);
-            color: var(--error);
-            border-left: 4px solid var(--error);
-        }
-
-        .alert-warning {
-            background: rgba(255, 193, 7, 0.1);
-            color: var(--warning);
-            border-left: 4px solid var(--warning);
-        }
-
-        .other-university {
-            display: none;
-            margin-top: 15px;
-        }
-
-        .form-footer {
-            background: var(--bg-light);
-            padding: 20px 30px;
-            text-align: center;
-            color: var(--text-light);
-            font-size: 0.9rem;
-        }
-
-        .validity-info {
-            background: rgba(74, 144, 164, 0.1);
-            border-radius: 10px;
-            padding: 15px;
-            margin-bottom: 25px;
-            border-left: 4px solid var(--primary-color);
-        }
-
-        .validity-info h6 {
-            color: var(--secondary-color);
-            margin-bottom: 10px;
-            font-weight: 600;
-        }
-
-        .validity-info ul {
-            margin: 0;
-            padding-left: 20px;
-            color: var(--text-dark);
-        }
-
-        .validity-info li {
-            margin-bottom: 5px;
-        }
-
-        @media (max-width: 768px) {
-            .main-wrapper {
-                padding: 10px;
-            }
-
-            .form-container {
-                border-radius: 15px;
-                margin: 10px;
-            }
-
-            .form-header {
-                padding: 30px 20px;
-            }
-
-            .form-header h1 {
-                font-size: 2rem;
-            }
-
-            .form-body {
-                padding: 30px 20px;
-            }
-
-            .form-title {
-                font-size: 1.5rem;
-            }
-
-            .btn-primary {
-                width: 100%;
-                padding: 15px;
-            }
-        }
-
-        @media (max-width: 576px) {
-            .form-header h1 {
-                font-size: 1.8rem;
-            }
-
-            .form-header .discount-badge {
-                padding: 12px 20px;
-            }
-
-            .form-header .discount-badge .discount-text {
-                font-size: 1.3rem;
-            }
-
-            .form-body {
-                padding: 25px 15px;
-            }
-
-            .form-footer {
-                padding: 15px 20px;
-            }
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>Dashboard – SK-PM</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="./assets/logo/sk-n.ico">
+  <link href="https://fonts.googleapis.com/css2?family=Merriweather&family=Playfair+Display&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
+  <link rel="stylesheet" href="./assets/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .month-option-disabled {
+      color: #6c757d !important;
+      font-style: italic;
+    }
+    .month-option-enabled {
+      font-weight: 500;
+    }
+  </style>
 </head>
-<body>
-    <div class="container-fluid">
-        <div class="main-wrapper">
-            <div class="container">
-                <div class="form-container">
-                    <div class="form-header">
-                        <h1>Highcrest Hotel</h1>
-                        <div class="stars">★ ★ ★ ★ ★</div>
-                        <div class="tagline">The First to Shine</div>
-                        <div class="discount-badge">
-                            <div class="discount-text">Enjoy 20% off</div>
-                            <div class="discount-subtitle">University Student Discount</div>
-                        </div>
-                    </div>
 
-                    <div class="form-body">
-                        <h2 class="form-title">Student Registration</h2>
-                        
-                        <?php if ($message): ?>
-                            <div class="alert alert-<?php echo $messageType === 'success' ? 'success' : ($messageType === 'warning' ? 'warning' : 'danger'); ?>">
-                                <?php echo $message; ?>
-                            </div>
-                        <?php endif; ?>
+<body class="bg-light font-serif">
+<header class="container text-center my-4">
+  <h1 class="display-5 fw-bold">Dashboard</h1>
+  <p class="lead mb-0">Overview for <?= date('F Y', strtotime($selMonth)) ?></p>
+</header>
 
-                        <div class="validity-info">
-                            <h6><i class="fas fa-info-circle"></i> Voucher Information</h6>
-                            <ul>
-                                <li>Show your student ID at time of use</li>
-                                <li>Valid for Food & Beverages or SPA Services</li>
-                                <li>One voucher per visit</li>
-                                <li>Valid until: April 1, 2026</li>
-                            </ul>
-                        </div>
-
-                        <form method="POST" action="" novalidate>
-                           <!-- Student ID Input -->
-<div class="form-group">
-    <label for="student_id" class="form-label">
-        <i class="fas fa-id-card"></i> Student ID
-    </label>
-    <input type="text" 
-           class="form-control" 
-           id="student_id" 
-           name="student_id" 
-           required 
-           placeholder="Enter your student ID"
-           value="<?php echo htmlspecialchars($studentId); ?>">
-</div>
-
-<!-- Full Name Input -->
-<div class="form-group">
-    <label for="name" class="form-label">
-        <i class="fas fa-user"></i> Full Name (as in passport)
-    </label>
-    <input type="text" 
-           class="form-control" 
-           id="name" 
-           name="name" 
-           required 
-           placeholder="Enter your full name"
-           value="<?php echo htmlspecialchars($name); ?>">
-</div>
-
-<!-- University Select -->
-<div class="form-group">
-    <label for="university" class="form-label">
-        <i class="fas fa-university"></i> University
-    </label>
-    <select class="form-control form-select" 
-            id="university" 
-            name="university" 
-            required 
-            onchange="toggleOtherUniversity(this)">
-        <option value="">Select University</option>
-        <!-- Public Universities -->
-        <option value="Charmo University" <?php echo ($university === 'Charmo University') ? 'selected' : ''; ?>>Charmo University</option>
-        <option value="Duhok Polytechnic University" <?php echo ($university === 'Duhok Polytechnic University') ? 'selected' : ''; ?>>Duhok Polytechnic University</option>
-        <option value="Erbil Polytechnic University" <?php echo ($university === 'Erbil Polytechnic University') ? 'selected' : ''; ?>>Erbil Polytechnic University</option>
-        <option value="Hawler Medical University" <?php echo ($university === 'Hawler Medical University') ? 'selected' : ''; ?>>Hawler Medical University</option>   
-        <option value="Koya University" <?php echo ($university === 'Koya University') ? 'selected' : ''; ?>>Koya University</option>
-        <option value="Salahaddin University - Erbil" <?php echo ($university === 'Salahaddin University - Erbil') ? 'selected' : ''; ?>>Salahaddin University - Erbil</option>
-        <option value="Soran University" <?php echo ($university === 'Soran University') ? 'selected' : ''; ?>>Soran University</option>
-        <option value="Sulaimani Polytechnic University" <?php echo ($university === 'Sulaimani Polytechnic University') ? 'selected' : ''; ?>>Sulaimani Polytechnic University</option>
-        <option value="University of Duhok" <?php echo ($university === 'University of Duhok') ? 'selected' : ''; ?>>University of Duhok</option>
-        <option value="University of Halabja" <?php echo ($university === 'University of Halabja') ? 'selected' : ''; ?>>University of Halabja</option>
-        <option value="University of Garmian" <?php echo ($university === 'University of Garmian') ? 'selected' : ''; ?>>University of Garmian</option>
-        <option value="University of Kurdistan Hewler" <?php echo ($university === 'University of Kurdistan Hewler') ? 'selected' : ''; ?>>University of Kurdistan Hewler</option>
-        <option value="University of Raparin" <?php echo ($university === 'University of Raparin') ? 'selected' : ''; ?>>University of Raparin</option>
-        <option value="University of Sulaimani" <?php echo ($university === 'University of Sulaimani') ? 'selected' : ''; ?>>University of Sulaimani</option>
-        <option value="University of Zakho" <?php echo ($university === 'University of Zakho') ? 'selected' : ''; ?>>University of Zakho</option>
-        <!-- Private Universities -->
-        <option value="American university of Kurdistan" <?php echo ($university === 'American university of Kurdistan') ? 'selected' : ''; ?>>American university of Kurdistan</option>
-        <option value="American University of Iraq Sulaimani" <?php echo ($university === 'American University of Iraq Sulaimani') ? 'selected' : ''; ?>>American University of Iraq Sulaimani</option>
-        <option value="Bayan University" <?php echo ($university === 'Bayan University') ? 'selected' : ''; ?>>Bayan University</option>
-        <option value="Catholic University in Erbil" <?php echo ($university === 'Catholic University in Erbil') ? 'selected' : ''; ?>>Catholic University in Erbil</option>
-        <option value="Cihan University - Duhok" <?php echo ($university === 'Cihan University - Duhok') ? 'selected' : ''; ?>>Cihan University - Duhok</option>
-        <option value="Cihan University - Sulaimaniya" <?php echo ($university === 'Cihan University - Sulaimaniya') ? 'selected' : ''; ?>>Cihan University - Sulaimaniya</option>
-        <option value="Internation University of Erbil" <?php echo ($university === 'Internation University of Erbil') ? 'selected' : ''; ?>>Internation University of Erbil</option>
-        <option value="Knowledge University" <?php echo ($university === 'Knowledge University') ? 'selected' : ''; ?>>Knowledge University</option>
-        <option value="University of Human Development" <?php echo ($university === 'University of Human Development') ? 'selected' : ''; ?>>University of Human Development</option>
-        <option value="Cihan University-Erbil" <?php echo ($university === 'Cihan University-Erbil') ? 'selected' : ''; ?>>Cihan University-Erbil</option>
-        <option value="Lebanese French University" <?php echo ($university === 'Lebanese French University') ? 'selected' : ''; ?>>Lebanese French University</option>
-        <option value="Nawroz University" <?php echo ($university === 'Nawroz University') ? 'selected' : ''; ?>>Nawroz University</option>
-        <option value="Tishk International University" <?php echo ($university === 'Tishk International University') ? 'selected' : ''; ?>>Tishk International University</option>
-        <option value="Komar University of Science and Technology" <?php echo ($university === 'Komar University of Science and Technology') ? 'selected' : ''; ?>>Komar University of Science and Technology</option>
-        <option value="University College of Goizha" <?php echo ($university === 'University College of Goizha') ? 'selected' : ''; ?>>University College of Goizha</option>
-        <option value="Other" <?php echo ($university === 'Other') ? 'selected' : ''; ?>>Other (please specify)</option>
-    </select>
-    
-    <div class="other-university" id="other_university_div" style="display: <?php echo ($university === 'Other') ? 'block' : 'none'; ?>;">
-        <label for="other_university" class="form-label">
-            <i class="fas fa-edit"></i> Please specify your university
-        </label>
-        <input type="text" 
-               class="form-control" 
-               id="other_university" 
-               name="other_university" 
-               placeholder="Enter your university name"
-               value="<?php echo htmlspecialchars($otherUniversity); ?>"
-               <?php echo ($university === 'Other') ? 'required' : ''; ?>>
-    </div>
-</div>
-
-<!-- Email Input -->
-<div class="form-group">
-    <label for="email" class="form-label">
-        <i class="fas fa-envelope"></i> Email Address
-    </label>
-    <input type="email" 
-           class="form-control" 
-           id="email" 
-           name="email" 
-           required 
-           placeholder="Enter your email address"
-           value="<?php echo htmlspecialchars($email); ?>">
-</div>
-
-<!-- Phone Input -->
-<div class="form-group">
-    <label for="phone" class="form-label">
-        <i class="fas fa-phone"></i> Phone Number
-    </label>
-    <div class="input-group">
-        <span class="input-group-text">+964</span>
-        <input type="tel" 
-               class="form-control" 
-               id="phone" 
-               name="phone" 
-               required 
-               pattern="[0-9]{10}" 
-               placeholder="7701234567"
-               maxlength="10"
-               value="<?php echo htmlspecialchars($phone); ?>">
-    </div>
-    <small class="text-muted">Enter 10 digits after +964</small>
-</div>
-
-<!-- Academic Year Select -->
-<div class="form-group">
-    <label for="academic_year" class="form-label">
-        <i class="fas fa-graduation-cap"></i> Academic Year
-    </label>
-    <select class="form-control form-select" 
-            id="academic_year" 
-            name="academic_year" 
-            required>
-        <option value="">Select Academic Year</option>
-        <option value="Freshman" <?php echo ($academicYear === 'Freshman') ? 'selected' : ''; ?>>Freshman (1st Year)</option>
-        <option value="Sophomore" <?php echo ($academicYear === 'Sophomore') ? 'selected' : ''; ?>>Sophomore (2nd Year)</option>
-        <option value="Junior" <?php echo ($academicYear === 'Junior') ? 'selected' : ''; ?>>Junior (3rd Year)</option>
-        <option value="Senior" <?php echo ($academicYear === 'Senior') ? 'selected' : ''; ?>>Senior (4th Year)</option>
-        <option value="Graduate Student" <?php echo ($academicYear === 'Graduate Student') ? 'selected' : ''; ?>>Graduate Student</option>
-    </select>
-</div>
-
-                            <div class="form-group">
-                                <button type="submit" class="btn btn-primary w-100">
-                                    <i class="fas fa-paper-plane"></i> Submit Registration
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-
-                    <div class="form-footer">
-                        <p>
-                            <i class="fas fa-shield-alt"></i> Your information is secure and will only be used for voucher verification.
-                        </p>
-                    </div>
-                </div>
-            </div>
+<!-- Summary Cards (common for all roles) -->
+<div class="container mb-5">
+  <div class="row g-4">
+    <!-- Total Users -->
+    <div class="col-md-3">
+      <div class="card shadow-sm text-center h-100">
+        <div class="card-body">
+          <h6 class="text-uppercase small">Total Users</h6>
+          <p class="display-6"><?= $totalUsers ?></p>
         </div>
+      </div>
+    </div>
+    <!-- Total Departments -->
+    <div class="col-md-3">
+      <div class="card shadow-sm text-center h-100">
+        <div class="card-body">
+          <h6 class="text-uppercase small">Departments</h6>
+          <p class="display-6"><?= $totalDepts ?></p>
+        </div>
+      </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
-    <script>
-        function toggleOtherUniversity(select) {
-            const otherDiv = document.getElementById('other_university_div');
-            const otherInput = document.getElementById('other_university');
-            
-            if (select.value === 'Other') {
-                otherDiv.style.display = 'block';
-                otherInput.required = true;
-            } else {
-                otherDiv.style.display = 'none';
-                otherInput.required = false;
-                otherInput.value = '';
-            }
+    <?php if ($roleId === ROLE_ADMIN): ?>
+      <!-- Active Departments (current month) for Admin -->
+      <div class="col-md-3">
+        <div class="card shadow-sm text-center h-100">
+          <div class="card-body">
+            <h6 class="text-uppercase small">Active Depts (<?= date('M') ?>)</h6>
+            <p class="display-6"><?= $activeDeptsNow ?></p>
+          </div>
+        </div>
+      </div>
+      <!-- (Empty column to maintain layout spacing) -->
+      <div class="col-md-3"></div>
+
+    <?php elseif ($roleId === ROLE_MANAGER): ?>
+      <!-- Pending Plan Entries for Manager's dept -->
+      <div class="col-md-3">
+        <div class="card shadow-sm text-center h-100">
+          <div class="card-body">
+            <h6 class="text-uppercase small">Pending Plans</h6>
+            <p class="display-6"><?= $pendingPlans ?></p>
+          </div>
+        </div>
+      </div>
+      <!-- Pending Actuals for Manager's dept -->
+      <div class="col-md-3">
+        <div class="card shadow-sm text-center h-100">
+          <div class="card-body">
+            <h6 class="text-uppercase small">Pending Actuals</h6>
+            <p class="display-6"><?= $pendingActuals ?></p>
+          </div>
+        </div>
+      </div>
+
+    <?php else: ?>
+      <!-- Pending Evaluations for Employee -->
+      <div class="col-md-3">
+        <div class="card shadow-sm text-center h-100">
+          <div class="card-body">
+            <h6 class="text-uppercase small">Pending Evaluations</h6>
+            <p class="display-6"><?= $pendingEvals ?></p>
+          </div>
+        </div>
+      </div>
+      <!-- (Empty column to maintain layout spacing) -->
+      <div class="col-md-3"></div>
+    <?php endif; ?>
+  </div>
+</div>
+
+<div class="container pb-5">
+<?php
+// Admin Dashboard Section
+if ($roleId === ROLE_ADMIN):
+    // Fetch data for selected month
+    $deptAverages = $reportRepo->deptAverages($selMonth);    // average final scores per department
+    $orgTrend     = $reportRepo->organisationTrend(6);       // last 6 months organization-wide average trend
+?>
+  <!-- Admin: Year and Month selector -->
+  <form method="get" class="row mb-4">
+    <div class="col-md-3">
+      <label for="year-select" class="form-label">Select Year</label>
+      <select id="year-select" name="year" class="form-select" onchange="updateMonthOptions()">
+        <?php foreach (array_keys($availableMonths) as $year): ?>
+          <option value="<?= $year ?>" <?= $year == $selectedYear ? 'selected' : '' ?>>
+            <?= $year ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label for="month-select" class="form-label">Select Month</label>
+      <select id="month-select" name="month" class="form-select">
+        <!-- Options will be populated by JavaScript -->
+      </select>
+    </div>
+    <div class="col-md-3 d-flex align-items-end">
+      <button type="submit" class="btn btn-primary">Update View</button>
+    </div>
+  </form>
+
+  <!-- Admin: Charts for organization overview -->
+  <div class="row g-4 mb-4">
+    <!-- Department Averages Bar Chart -->
+    <div class="col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-header fw-semibold">
+          Dept Averages – <?= date('F Y', strtotime($selMonth)) ?>
+        </div>
+        <div class="card-body">
+          <canvas id="chartDeptAvg"></canvas>
+        </div>
+      </div>
+    </div>
+    <!-- Organization Trend Line Chart (6 months) -->
+    <div class="col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-header fw-semibold">Organization Trend (6 months)</div>
+        <div class="card-body">
+          <canvas id="chartOrgTrend"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin: Department performance table for selected month -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-header fw-semibold">Department Performance (<?= date('F Y', strtotime($selMonth)) ?>)</div>
+    <div class="card-body table-responsive">
+      <?php if (empty($deptAverages)): ?>
+        <div class="alert alert-info text-center">
+          <i class="fas fa-info-circle me-2"></i>
+          No performance data available for <?= date('F Y', strtotime($selMonth)) ?>
+        </div>
+      <?php else: ?>
+        <table class="table table-striped table-bordered align-middle">
+          <thead class="table-dark">
+            <tr>
+              <th>Department</th>
+              <th class="text-center">Avg Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($deptAverages as $row): ?>
+            <tr>
+              <td><?= htmlspecialchars($row['dept_name']) ?></td>
+              <td class="text-center"><?= safeRound($row['avg_score']) ?>%</td>
+            </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      <?php endif; ?>
+    </div>
+  </div>
+
+  <!-- Initialize Admin charts using Chart.js -->
+  <script>
+    // Available months data for JavaScript
+    const availableMonths = <?= json_encode($availableMonths) ?>;
+    const selectedMonth = '<?= $selectedMonth ?>';
+
+    function updateMonthOptions() {
+      const yearSelect = document.getElementById('year-select');
+      const monthSelect = document.getElementById('month-select');
+      const selectedYear = yearSelect.value;
+      
+      // Clear existing options
+      monthSelect.innerHTML = '';
+      
+      if (availableMonths[selectedYear]) {
+        availableMonths[selectedYear].forEach(function(month) {
+          const option = document.createElement('option');
+          option.value = month.value.split('-')[1]; // Extract month number
+          option.textContent = month.name;
+          
+          if (!month.has_data) {
+            option.className = 'month-option-disabled';
+            option.textContent += ' (No Data)';
+          } else {
+            option.className = 'month-option-enabled';
+          }
+          
+          monthSelect.appendChild(option);
+        });
+      }
+    }
+
+    // Initialize month options on page load
+    document.addEventListener('DOMContentLoaded', function() {
+      updateMonthOptions();
+      document.getElementById('month-select').value = selectedMonth;
+    });
+
+    // Bar chart for Department Averages
+    new Chart(document.getElementById('chartDeptAvg'), {
+      type: 'bar',
+      data: {
+        labels: <?= json_encode(array_column($deptAverages, 'dept_name')) ?>,
+        datasets: [{
+          label: 'Average',
+          data: <?= json_encode(array_map(fn($r) => safeRound($r['avg_score']), $deptAverages)) ?>,
+          backgroundColor: 'rgba(54,162,235,0.5)',
+          borderColor: 'rgba(54,162,235,1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        scales: { y: { beginAtZero: true, max: 100 } },
+        plugins: { legend: { display: false } }
+      }
+    });
+
+    // Line chart for Organization Trend
+    new Chart(document.getElementById('chartOrgTrend'), {
+      type: 'line',
+      data: {
+        labels: <?= json_encode(array_map(fn($r) => date('M Y', strtotime($r['month'])), $orgTrend)) ?>,
+        datasets: [{
+          label: 'Org Avg',
+          data: <?= json_encode(array_map(fn($r) => safeRound($r['avg_score']), $orgTrend)) ?>,
+          tension: 0.3,
+          fill: true,
+          borderColor: 'rgba(75,192,192,1)',
+          backgroundColor: 'rgba(75,192,192,0.2)',
+          borderWidth: 2
+        }]
+      },
+      options: {
+        scales: { y: { beginAtZero: true, max: 100 } }
+      }
+    });
+  </script>
+
+<?php
+// Manager Dashboard Section
+elseif ($roleId === ROLE_MANAGER):
+    // Fetch data for manager's department and selected month
+    $deptScore = $reportRepo->deptScore($deptId, $selMonth) ?: 0;
+    $teamStats = $reportRepo->teamFinalScores($deptId, $selMonth);
+    $kpiSlices = $reportRepo->kpiContributions($deptId, $selMonth);
+?>
+  <!-- Manager: Year and Month selector -->
+  <form method="get" class="row mb-4">
+    <div class="col-md-3">
+      <label for="year-select" class="form-label">Select Year</label>
+      <select id="year-select" name="year" class="form-select" onchange="updateMonthOptions()">
+        <?php foreach (array_keys($availableMonths) as $year): ?>
+          <option value="<?= $year ?>" <?= $year == $selectedYear ? 'selected' : '' ?>>
+            <?= $year ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label for="month-select" class="form-label">Select Month</label>
+      <select id="month-select" name="month" class="form-select">
+        <!-- Options will be populated by JavaScript -->
+      </select>
+    </div>
+    <div class="col-md-3 d-flex align-items-end">
+      <button type="submit" class="btn btn-primary">Update View</button>
+    </div>
+  </form>
+
+  <!-- Manager: Key metrics cards (Dept Score, Team Members count, Month) -->
+  <div class="row g-4">
+    <div class="col-lg-4">
+      <div class="card shadow-sm text-center h-100">
+        <div class="card-body">
+          <h6 class="text-uppercase small">Dept Score</h6>
+          <p class="display-5"><?= safeRound($deptScore) ?>%</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card shadow-sm text-center h-100">
+        <div class="card-body">
+          <h6 class="text-uppercase small">Team Members</h6>
+          <p class="display-5"><?= count($teamStats) ?></p>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card shadow-sm text-center h-100">
+        <div class="card-body">
+          <h6 class="text-uppercase small">Month</h6>
+          <p class="display-5"><?= date('M Y', strtotime($selMonth)) ?></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manager: Charts for KPI contributions and team final scores -->
+  <div class="row g-4 mt-4">
+    <!-- KPI Contributions Pie Chart -->
+    <div class="col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-header fw-semibold">KPI Contributions</div>
+        <div class="card-body">
+          <canvas id="chartKpi"></canvas>
+        </div>
+      </div>
+    </div>
+    <!-- Team Final Scores Bar Chart -->
+    <div class="col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-header fw-semibold">Team Final Scores</div>
+        <div class="card-body">
+          <canvas id="chartTeam"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manager: Team performance table for selected month -->
+  <div class="card shadow-sm mt-4">
+    <div class="card-header fw-semibold">Team Performance (<?= date('F Y', strtotime($selMonth)) ?>)</div>
+    <div class="card-body table-responsive">
+      <?php if (empty($teamStats)): ?>
+        <div class="alert alert-info text-center">
+          <i class="fas fa-info-circle me-2"></i>
+          No performance data available for your team in <?= date('F Y', strtotime($selMonth)) ?>
+        </div>
+      <?php else: ?>
+        <table class="table table-striped table-bordered align-middle">
+          <thead class="table-dark">
+            <tr>
+              <th>Employee Name</th>
+              <th class="text-center">Individual Score</th>
+              <th class="text-center">Final Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($teamStats as $member): ?>
+            <tr>
+              <td><?= htmlspecialchars($member['name']) ?></td>
+              <td class="text-center"><?= safeRound($member['individual_score'] ?? 0) ?>%</td>
+              <td class="text-center"><?= safeRound($member['final_score'] ?? 0) ?>%</td>
+            </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      <?php endif; ?>
+    </div>
+  </div>
+
+  <!-- Initialize Manager charts -->
+  <script>
+    // Available months data for JavaScript
+    const availableMonths = <?= json_encode($availableMonths) ?>;
+    const selectedMonth = '<?= $selectedMonth ?>';
+
+    function updateMonthOptions() {
+      const yearSelect = document.getElementById('year-select');
+      const monthSelect = document.getElementById('month-select');
+      const selectedYear = yearSelect.value;
+      
+      // Clear existing options
+      monthSelect.innerHTML = '';
+      
+      if (availableMonths[selectedYear]) {
+        availableMonths[selectedYear].forEach(function(month) {
+          const option = document.createElement('option');
+          option.value = month.value.split('-')[1]; // Extract month number
+          option.textContent = month.name;
+          
+          if (!month.has_data) {
+            option.className = 'month-option-disabled';
+            option.textContent += ' (No Data)';
+          } else {
+            option.className = 'month-option-enabled';
+          }
+          
+          monthSelect.appendChild(option);
+        });
+      }
+    }
+
+    // Initialize month options on page load
+    document.addEventListener('DOMContentLoaded', function() {
+      updateMonthOptions();
+      document.getElementById('month-select').value = selectedMonth;
+    });
+
+    // Pie chart for KPI Contributions
+    new Chart(document.getElementById('chartKpi'), {
+      type: 'pie',
+      data: {
+        labels: <?= json_encode(array_column($kpiSlices, 'label')) ?>,
+        datasets: [{
+          data: <?= json_encode(array_map(fn($r) => safeRound($r['contribution'] ?? 0), $kpiSlices)) ?>,
+          backgroundColor: ['#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f','#edc949','#af7aa1','#ff9da7','#9c755f','#bab0ab']
+        }]
+      },
+      options: {
+        plugins: {
+          legend: { position: 'bottom' }
         }
+      }
+    });
 
-        // Phone number formatting
-        document.getElementById('phone').addEventListener('input', function(e) {
-            let value = e.target.value.replace(/\D/g, '');
-            if (value.length > 10) {
-                value = value.substring(0, 10);
-            }
-            e.target.value = value;
+    // Bar chart for Team Final Scores
+    new Chart(document.getElementById('chartTeam'), {
+      type: 'bar',
+      data: {
+        labels: <?= json_encode(array_column($teamStats, 'name')) ?>,
+        datasets: [{
+          label: 'Final Score',
+          data: <?= json_encode(array_map(fn($r) => safeRound($r['final_score'] ?? 0), $teamStats)) ?>,
+          backgroundColor: 'rgba(54,162,235,0.5)',
+          borderColor: 'rgba(54,162,235,1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        scales: { x: { beginAtZero: true, max: 100 } },
+        plugins: { legend: { display: false } }
+      }
+    });
+  </script>
+
+<?php
+// Employee Dashboard Section
+else:
+    // Personal performance data for selected month and recent history
+    $history = $reportRepo->getPersonalScoreHistory($user['user_id'], 6);  // last 6 months (oldest first)
+    $latest  = $reportRepo->getPersonalLatestBreakdown($user['user_id'], $selMonth);
+    if (!$latest) {
+        $latest = ['dept_score' => 0, 'individual_score' => 0];
+    }
+    $latestFinal = safeRound(($latest['dept_score'] ?? 0) * 0.7 + ($latest['individual_score'] ?? 0) * 0.3);
+    // Prepare data for charts
+    $trendLabels = array_map(fn($r) => date('M Y', strtotime($r['month'])), $history);
+    $trendScores = array_map(fn($r) => safeRound($r['final_score'] ?? 0), $history);
+?>
+  <!-- Employee: Year and Month selector -->
+  <form method="get" class="row mb-4">
+    <div class="col-md-3">
+      <label for="year-select" class="form-label">Select Year</label>
+      <select id="year-select" name="year" class="form-select" onchange="updateMonthOptions()">
+        <?php foreach (array_keys($availableMonths) as $year): ?>
+          <option value="<?= $year ?>" <?= $year == $selectedYear ? 'selected' : '' ?>>
+            <?= $year ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label for="month-select" class="form-label">Select Month</label>
+      <select id="month-select" name="month" class="form-select">
+        <!-- Options will be populated by JavaScript -->
+      </select>
+    </div>
+    <div class="col-md-3 d-flex align-items-end">
+      <button type="submit" class="btn btn-primary">Update View</button>
+    </div>
+  </form>
+
+  <!-- Employee: Key metrics cards (Latest Final, Dept component, Ind component) -->
+  <div class="row g-4">
+    <div class="col-lg-4">
+      <div class="card shadow-sm text-center h-100">
+        <div class="card-body">
+          <h6 class="text-uppercase small">Latest Final</h6>
+          <p class="display-5"><?= $latestFinal ?></p>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card shadow-sm text-center h-100">
+        <div class="card-body">
+          <h6 class="text-uppercase small">Dept Component</h6>
+          <p class="display-5"><?= safeRound($latest['dept_score'] ?? 0) ?>%</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card shadow-sm text-center h-100">
+        <div class="card-body">
+          <h6 class="text-uppercase small">Indiv Component</h6>
+          <p class="display-5"><?= safeRound($latest['individual_score'] ?? 0) ?>%</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Employee: Charts for performance trend and latest breakdown -->
+  <div class="row g-4 mt-4">
+    <!-- Personal Performance Trend (line chart) -->
+    <div class="col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-header fw-semibold">Performance Trend (Last 6 Months)</div>
+        <div class="card-body">
+          <canvas id="chartTrend"></canvas>
+        </div>
+      </div>
+    </div>
+    <!-- Latest Performance Breakdown (doughnut chart) -->
+    <div class="col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-header fw-semibold">Latest Breakdown (Dept vs Ind)</div>
+        <div class="card-body">
+          <canvas id="chartBreak"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Initialize Employee charts -->
+  <script>
+    // Available months data for JavaScript
+    const availableMonths = <?= json_encode($availableMonths) ?>;
+    const selectedMonth = '<?= $selectedMonth ?>';
+
+    function updateMonthOptions() {
+      const yearSelect = document.getElementById('year-select');
+      const monthSelect = document.getElementById('month-select');
+      const selectedYear = yearSelect.value;
+      
+      // Clear existing options
+      monthSelect.innerHTML = '';
+      
+      if (availableMonths[selectedYear]) {
+        availableMonths[selectedYear].forEach(function(month) {
+          const option = document.createElement('option');
+          option.value = month.value.split('-')[1]; // Extract month number
+          option.textContent = month.name;
+          
+          if (!month.has_data) {
+            option.className = 'month-option-disabled';
+            option.textContent += ' (No Data)';
+          } else {
+            option.className = 'month-option-enabled';
+          }
+          
+          monthSelect.appendChild(option);
         });
+      }
+    }
 
-        // Form validation
-        document.querySelector('form').addEventListener('submit', function(e) {
-            const phone = document.getElementById('phone').value;
-            const phonePattern = /^[0-9]{10}$/;
-            
-            if (!phonePattern.test(phone)) {
-                e.preventDefault();
-                alert('Please enter a valid 10-digit phone number');
-                return false;
-            }
-        });
+    // Initialize month options on page load
+    document.addEventListener('DOMContentLoaded', function() {
+      updateMonthOptions();
+      document.getElementById('month-select').value = selectedMonth;
+    });
 
-        // Auto-hide alerts after 10 seconds
-        setTimeout(function() {
-            const alerts = document.querySelectorAll('.alert');
-            alerts.forEach(function(alert) {
-                alert.style.transition = 'opacity 0.5s';
-                alert.style.opacity = '0';
-                setTimeout(function() {
-                    alert.style.display = 'none';
-                }, 500);
-            });
-        }, 10000);
-    </script>
+    // Line chart for personal performance trend
+    new Chart(document.getElementById('chartTrend'), {
+      type: 'line',
+      data: {
+        labels: <?= json_encode($trendLabels) ?>,
+        datasets: [{
+          label: 'Final Score',
+          data: <?= json_encode($trendScores) ?>,
+          tension: 0.3,
+          fill: true,
+          borderColor: 'rgba(75,192,192,1)',
+          backgroundColor: 'rgba(75,192,192,0.2)',
+          borderWidth: 2
+        }]
+      },
+      options: {
+        scales: { y: { beginAtZero: true, max: 100 } }
+      }
+    });
+
+    // Doughnut chart for latest breakdown (Dept vs Individual contribution)
+    new Chart(document.getElementById('chartBreak'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Dept', 'Ind'],
+        datasets: [{
+          data: [
+            <?= safeRound($latest['dept_score'] ?? 0) ?>,
+            <?= safeRound($latest['individual_score'] ?? 0) ?>
+          ],
+          backgroundColor: ['#4e79a7', '#f28e2b']
+        }]
+      },
+      options: {
+        plugins: {
+          legend: { position: 'bottom' }
+        }
+      }
+    });
+  </script>
+<?php endif; // end role-specific sections ?>
+</div> <!-- /.container -->
+
+<footer class="footer text-center py-3 border-top">
+  <small>&copy; <?= date('Y') ?> SK-PM Performance Management</small>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
 </body>
 </html>
