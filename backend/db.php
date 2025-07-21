@@ -6,7 +6,7 @@
 
 // hosted
 // define('DB_HOST', 'localhost');
-// define('DB_NAME', 'dbvwgo85dtqpmm');
+// define('DB_NAME', 'dbyt54hn0hu1uc');
 // define('DB_USER', 'ukjjbxzlryc5n');
 // define('DB_PASS', '$sk$-101');
 

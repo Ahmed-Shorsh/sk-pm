@@ -144,14 +144,14 @@ class EmailService {
             border-bottom: 1px solid #e9ecef;
         }
         
+
         .logo-img {
-            display: block;
-            margin: 0 auto 16px auto;
-         
-            height: auto;
-              width:150px !important;
-             height:100% !important;
-        }
+    display: block;
+    margin: 0 auto 16px auto;
+    max-width: 150px !important;
+    height: auto !important;
+    width: 150px !important;
+}
         
         .logo-img-light {
             display: none;
@@ -372,12 +372,11 @@ class EmailService {
                 <td>
                  <div class="header">
    <a href="https://ske.southkurdistan.com" target="_blank">
-        <img src="' . $this->getBaseUrl() . '/../assets/logo/ske-dark.png"
-             alt="SKE Logo"
-             width="150px"
-             height="100%"
-             style="display: block; margin: 0 auto;"
-             class="logo-img">
+       <img src="' . $this->getBaseUrl() . '/../assets/logo/ske-dark.png"
+     alt="SKE Logo"
+     width="150"
+     style="display: block; margin: 0 auto; max-width: 150px; height: auto;"
+     class="logo-img">
     </a>
     <h1 class="company-name">SK Estate</h1>
     <p class="company-subtitle">Performance Management System</p>

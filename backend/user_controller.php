@@ -24,24 +24,43 @@ function fetchAllRoles(): array {
 //     return $stmt->execute([$name, $email, $hash, $role_id, $dept_id]);
 // }
 
-function getUser(int $user_id): array|false {
+function getUser(int $id): ?array
+{
     global $pdo;
+
     $sql = "
-        SELECT 
-            u.user_id,
-            u.name,
-            u.email,
-            u.role_id,
-            r.role_name,
-            u.dept_id
-        FROM users u
-        JOIN roles r ON u.role_id = r.role_id
-        WHERE u.user_id = :uid
+    SELECT
+        u.user_id,
+        u.name,
+        u.email,
+        u.phone,
+        u.position,
+        u.birth_date,
+        u.hire_date,
+        u.rating_window_days,
+        /* make sure the chat ID comes through */
+        COALESCE(u.telegram_chat_id, ut.telegram_chat_id) AS telegram_chat_id,
+        u.role_id,
+        r.role_name,
+        u.dept_id,
+        d.dept_name,
+        u.active
+    FROM users u
+    JOIN roles r             ON r.role_id  = u.role_id
+    LEFT JOIN departments d  ON d.dept_id  = u.dept_id
+    /* grab chat ID from user_telegram too, in case that table has the latest value */
+    LEFT JOIN user_telegram ut ON ut.user_id = u.user_id AND ut.verified = 1
+    WHERE u.user_id = :id
+    LIMIT 1
     ";
+
     $stmt = $pdo->prepare($sql);
-    $stmt->execute([':uid' => $user_id]);
-    return $stmt->fetch(PDO::FETCH_ASSOC);
+    $stmt->execute(['id' => $id]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $user ?: null;
 }
+
 
 // function updateUser($user_id, $name, $email, $role_id, $dept_id, $active) {
 //     global $pdo;
@@ -83,7 +102,8 @@ function fetchAllUsers() {
             u.position,
             u.birth_date,
             u.hire_date,
-            u.rating_window_days,      -- ‹ add this line
+            u.rating_window_days,      
+            u.telegram_chat_id,
             u.role_id,
             r.role_name,
             u.dept_id,
