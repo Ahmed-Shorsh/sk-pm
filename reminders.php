@@ -18,6 +18,24 @@ if (($_SESSION['role_id'] ?? 0) !== 1) {
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send') {
+    $uid = (int)($_POST['user_id'] ?? 0);
+    $msg = trim($_POST['message'] ?? '');
+
+    try {
+        // message null → buildDefaultMessage() will be used
+        sendTelegramReminder($pdo, $uid, $msg !== '' ? $msg : null);
+        $GLOBALS['message_html'] = '<div class="alert alert-success">Telegram message sent successfully.</div>';
+    } catch (Throwable $e) {
+        $GLOBALS['message_html'] = '<div class="alert alert-danger">' .
+            htmlspecialchars($e->getMessage(), ENT_QUOTES) .
+            '</div>';
+    }
+      header('Location: ' . $_SERVER['REQUEST_URI']);
+    exit;
+}
+
+
 $settingsRepo = new Backend\SettingsRepository($pdo);
 $globalDays   = (int)($settingsRepo->getSetting('evaluation_deadline_days') ?? 2);
 $globalActualsDays = (int)($settingsRepo->getSetting('actuals_entry_deadline_days') ?? $globalDays);
