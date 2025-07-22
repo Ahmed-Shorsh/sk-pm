@@ -273,6 +273,17 @@ public function fetchDepartmentMembers(int $deptId): array
                 ]);
             }
             $this->pdo->commit();
+
+            $evalRepo = new \Backend\EvaluationRepository($this->pdo);
+
+            $stmt = $this->pdo->prepare('SELECT user_id FROM users WHERE dept_id = ? AND active = 1');
+            $stmt->execute([$deptId]);
+            $userIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        
+            foreach ($userIds as $userId) {
+                $evalRepo->updateScoresAfterEvaluation((int)$userId, $month);
+            }
+
             return true;
         } catch (PDOException $e) {
             $this->pdo->rollBack();

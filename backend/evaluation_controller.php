@@ -1,14 +1,4 @@
 <?php
-/**
- * Repository for “person–to–person” evaluations.
- *
- *  • Table  : individual_evaluations
- *  • Joins  : users, departments, individual_indicators
- *  • Scope  : one evaluator  → one target  → many indicators  (per month)
- *
- * @author   SK-PM
- * @version  2.0 – 2025-05-27
- */
 
 declare(strict_types=1);
 
@@ -16,86 +6,80 @@ namespace Backend;
 
 use PDO;
 use PDOException;
-use DateTime;
 use Exception;
 
 require_once __DIR__ . '/db.php';   // provides $pdo
+require_once __DIR__ . '/settings_controller.php';  // for SettingsRepository
 
 final class EvaluationRepository
 {
     private PDO $pdo;
 
-    // ---------------------------------------------------------------------
-    // ctor
-    // ---------------------------------------------------------------------
     public function __construct(PDO $pdo)
     {
         $this->pdo = $pdo;
     }
 
-    // ---------------------------------------------------------------------
-    // 1.  DIRECTORY HELPERS
-    // ---------------------------------------------------------------------
+    //======================================================================
+    // 1. DIRECTORY HELPERS
+    //======================================================================
 
     public function fetchPeers(int $userId): array
     {
         $deptId = $this->fetchDeptId($userId);
         if ($deptId === null) return [];
-    
+
         $sql = "
           SELECT user_id, name
-          FROM   users
-          WHERE  dept_id = :dept
-            AND  user_id <> :self
-            AND  role_id = 3          -- employees only
-            AND  active  = 1
-          ORDER  BY name";
+            FROM users
+           WHERE dept_id  = :dept
+             AND user_id  <> :self
+             AND role_id   = 3    -- employees only
+             AND active    = 1
+        ORDER BY name
+        ";
         return $this->select($sql, [':dept' => $deptId, ':self' => $userId]);
     }
 
-    /** Manager of this user (if any) */
     public function fetchManager(int $userId): ?array
     {
         $sql = "
             SELECT m.user_id, m.name
-            FROM   users       u
-            JOIN   departments d ON u.dept_id = d.dept_id
-            JOIN   users       m ON d.manager_id = m.user_id
-            WHERE  u.user_id = :uid
+              FROM users u
+              JOIN departments d ON u.dept_id = d.dept_id
+              JOIN users m ON d.manager_id = m.user_id
+             WHERE u.user_id = :uid
         ";
-
-        $row = $this->selectOne($sql, [':uid' => $userId]);
-
-        return $row ?: null;
+        return $this->selectOne($sql, [':uid' => $userId]);
     }
 
-    /** Team members for a manager */
+    public function fetchTeamMembers(int $managerId): array
+    {
+        $deptId = $this->selectScalar(
+            "SELECT dept_id FROM users WHERE user_id = :uid",
+            [':uid' => $managerId]
+        );
+        if ($deptId === null) return [];
 
-public function fetchTeamMembers(int $managerId): array
-{
-    // manager’s own department
-    $deptId = $this->selectScalar(
-        "SELECT dept_id FROM users WHERE user_id = :uid",
-        [':uid' => $managerId]
-    );
-    if ($deptId === null) return [];
+        $sql = "
+            SELECT user_id, name
+              FROM users
+             WHERE dept_id = :dept
+               AND role_id = 3
+               AND active  = 1
+          ORDER BY name
+        ";
+        return $this->select($sql, [':dept' => $deptId]);
+    }
 
-    $sql = "
-        SELECT user_id, name
-        FROM   users
-        WHERE  dept_id = :dept
-          AND  role_id = 3          -- employees only
-          AND  active  = 1
-        ORDER  BY name
-    ";
-    return $this->select($sql, [':dept' => $deptId]);
-}
+    //======================================================================
+    // 2. SAVE / UPDATE EVALUATIONS
+    //======================================================================
 
-
-    // ---------------------------------------------------------------------
-    // 2.  SAVE / UPDATE EVALUATIONS
-    // ---------------------------------------------------------------------
-
+    /**
+     * Save all ratings for one evaluator in one month,
+     * then update each target’s final scores immediately.
+     */
     public function saveEvaluations(
         int    $evaluatorId,
         string $month,
@@ -103,67 +87,61 @@ public function fetchTeamMembers(int $managerId): array
         array  $comments = []
     ): bool {
         $this->assertMonth($month);
-    
-        /* --------------------------------------------------------------
-         * Prepared statements
-         * ------------------------------------------------------------ */
-        $del = $this->pdo->prepare(
-            'DELETE FROM individual_evaluations
-              WHERE evaluator_id = :evtor
-                AND evaluatee_id = :evtee
-                AND month        = :m'
-        );
-    
-        $ins = $this->pdo->prepare(
-            'INSERT INTO individual_evaluations
-                   (evaluator_id, evaluatee_id, indicator_id,
-                    month, rating, comments, created_at)
-             VALUES (:evtor, :evtee, :ind, :m, :val, :c, NOW())'
-        );
-    
-        /* --------------------------------------------------------------
-         * Cache default-goal ceilings so we can validate ranges
-         * ------------------------------------------------------------ */
+
+        // DELETE + INSERT statements for individual_evaluations
+        $del = $this->pdo->prepare("
+            DELETE FROM individual_evaluations
+             WHERE evaluator_id = :evtor
+               AND evaluatee_id = :evtee
+               AND indicator_id = :ind
+               AND month        = :m
+        ");
+        $ins = $this->pdo->prepare("
+            INSERT INTO individual_evaluations
+              (evaluator_id, evaluatee_id, indicator_id,
+               month, rating, comments, created_at)
+            VALUES (:evtor, :evtee, :ind, :m, :val, :c, NOW())
+        ");
+
+        // Cache default goals
+        $allIds = [];
+        foreach ($ratings as $arr) {
+            $allIds = array_merge($allIds, array_keys($arr));
+        }
         $goalCache = [];
-        $allIndIds = [];
-        foreach ($ratings as $indArr) $allIndIds += array_keys($indArr);
-        if ($allIndIds) {
-            $place = implode(',', array_fill(0, count($allIndIds), '?'));
-            $stmt  = $this->pdo->prepare(
-                "SELECT indicator_id, default_goal
-                   FROM individual_indicators
-                  WHERE indicator_id IN ($place)"
-            );
-            $stmt->execute($allIndIds);
+        if ($allIds) {
+            $place = implode(',', array_fill(0, count($allIds), '?'));
+            $stmt  = $this->pdo->prepare("
+                SELECT indicator_id, default_goal
+                  FROM individual_indicators
+                 WHERE indicator_id IN ($place)
+            ");
+            $stmt->execute($allIds);
             $goalCache = $stmt->fetchAll(PDO::FETCH_KEY_PAIR) ?: [];
         }
-    
-        /* --------------------------------------------------------------
-         * Transaction: delete old rows → insert new ones
-         * ------------------------------------------------------------ */
+
         $this->pdo->beginTransaction();
         try {
+            // Loop each evaluatee
             foreach ($ratings as $targetId => $indArr) {
-    
-                /* purge previous ratings for this evaluator-target-month */
-                $del->execute([
-                    ':evtor' => $evaluatorId,
-                    ':evtee' => $targetId,
-                    ':m'     => $month,
-                ]);
-    
+
+                // Purge old ratings for these indicators
+                foreach ($indArr as $indicatorId => $_) {
+                    $del->execute([
+                        ':evtor' => $evaluatorId,
+                        ':evtee' => $targetId,
+                        ':ind'   => $indicatorId,
+                        ':m'     => $month,
+                    ]);
+                }
+
+                // Insert fresh ratings
                 foreach ($indArr as $indicatorId => $value) {
-                    $value = (float)$value;         // allow decimals (step 0.1)
-    
-                    /* ---------- range check against default goal ---------- */
-                    $ceil = (float)($goalCache[$indicatorId] ?? 5.0);
+                    $value = (float)$value;
+                    $ceil  = (float)($goalCache[$indicatorId] ?? 5.0);
                     if ($value < 0 || $value > $ceil) {
-                        throw new Exception(
-                            "Rating $value out of range for indicator $indicatorId (0–$ceil)"
-                        );
+                        throw new Exception("Rating $value out of range (0–$ceil)");
                     }
-                    /* ------------------------------------------------------ */
-    
                     $ins->execute([
                         ':evtor' => $evaluatorId,
                         ':evtee' => $targetId,
@@ -173,80 +151,155 @@ public function fetchTeamMembers(int $managerId): array
                         ':c'     => $comments[$targetId] ?? '',
                     ]);
                 }
+
+                // Immediately update final scores for this target
+                $this->updateScoresAfterEvaluation($targetId, $month);
             }
+
             $this->pdo->commit();
             return true;
-    
-        } catch (Exception|PDOException $e) {
+        } catch (Exception | PDOException $e) {
             $this->pdo->rollBack();
             throw $e;
         }
     }
 
-    // ---------------------------------------------------------------------
-    // 3.  READ (REPORT) EVALUATIONS
-    // ---------------------------------------------------------------------
+    //======================================================================
+    // 3. CONTINUOUS SCORE UPDATES
+    //======================================================================
 
     /**
-     * Fetch evaluations with optional filters.
-     *
-     * @param string|null $month  YYYY-MM-01
-     * @param int|null    $deptId limit to targets in department
-     * @return array
+     * Recalculate and upsert dept/individual/final scores for one user/month.
      */
-    public function fetchIndividualEvaluations(
-        ?string $month = null,
-        ?int    $deptId = null
-    ): array {
+    public function updateScoresAfterEvaluation(int $targetUserId, string $month): void
+    {
+        // 1. Dept ID
+        $deptId = $this->fetchDeptId($targetUserId);
+        if ($deptId === null) {
+            return;
+        }
+
+        // 2. Individual Score: sum ratings ÷ (raters × sum(goals)) × 100
         $sql = "
-            SELECT  ie.eval_id,
-                    ie.month,
-                    ie.actual            AS rating,
-                    ie.comments,
-                    ie.created_at,
-                    evtr.name            AS evaluator,
-                    evte.name            AS evaluatee,
-                    ind.name             AS indicator,
-                    d.dept_name
-            FROM    individual_evaluations ie
-            JOIN    users evtr        ON ie.evaluator_id = evtr.user_id
-            JOIN    users evte        ON ie.target_id    = evte.user_id
-            JOIN    individual_indicators ind
-                                     ON ie.indicator_id = ind.indicator_id
-            LEFT    JOIN departments d ON evte.dept_id = d.dept_id
+            SELECT 
+              SUM(ev.rating) AS total_rating,
+              COUNT(DISTINCT ev.evaluator_id) AS evaluator_count
+            FROM individual_evaluations ev
+            JOIN users ue
+              ON ev.evaluator_id = ue.user_id
+            WHERE ev.evaluatee_id = :user
+              AND ev.month        = :m
+              AND ue.dept_id       = :dept
+        ";
+        $row = $this->selectOne($sql, [
+            ':user' => $targetUserId,
+            ':m'    => $month,
+            ':dept' => $deptId
+        ]);
+        $totalRating    = (float)($row['total_rating']    ?? 0);
+        $evaluatorCount = (int)  ($row['evaluator_count'] ?? 0);
+
+        $individualScore = 0.0;
+        if ($evaluatorCount > 0) {
+            // sum of indicator goals for this set
+            $goalSql = "
+                SELECT SUM(ii.default_goal) AS goal_sum
+                  FROM individual_indicators ii
+                 WHERE ii.indicator_id IN (
+                   SELECT DISTINCT ev.indicator_id
+                     FROM individual_evaluations ev
+                     JOIN users ue
+                       ON ev.evaluator_id = ue.user_id
+                    WHERE ev.evaluatee_id = :user
+                      AND ev.month        = :m
+                      AND ue.dept_id       = :dept
+                 )
+            ";
+            $goalSum = (float)$this->selectScalar($goalSql, [
+                ':user' => $targetUserId,
+                ':m'    => $month,
+                ':dept' => $deptId
+            ]) ?: 0.0;
+
+            if ($goalSum > 0) {
+                $individualScore = ($totalRating / ($evaluatorCount * $goalSum)) * 100.0;
+            }
+        }
+
+        // 3. Department Score: sum((audit_score/5)*weight)
+        $deptSql = "
+            SELECT COALESCE(SUM(dim.audit_score * dim.weight),0) AS dept_total
+              FROM department_indicator_monthly dim
+             WHERE dim.dept_id = :dept
+               AND dim.month   = :m
         ";
 
-        $conds  = [];
-        $params = [];
 
-        if ($month !== null) {
-            $this->assertMonth($month);
-            $conds[]            = 'ie.month = :m';
-            $params[':m']       = $month;
-        }
-        if ($deptId !== null) {
-            $conds[]            = 'evte.dept_id = :d';
-            $params[':d']       = $deptId;
-        }
-        if ($conds) {
-            $sql .= ' WHERE ' . implode(' AND ', $conds);
-        }
 
-        $sql .= "
-            ORDER BY ie.month DESC,
-                     evtr.name,
-                     evte.name,
-                     ind.sort_order
-        ";
+        $deptScore = (float)$this->selectScalar($deptSql, [
+            ':dept' => $deptId,
+            ':m'    => $month
+        ]);
 
-        return $this->select($sql, $params);
+        // 4. Fetch weights
+        $settings = new SettingsRepository($this->pdo);
+        $deptPerc = (int)$settings->getSetting('department_score_weight');
+        $indPerc  = (int)$settings->getSetting('individual_score_weight');
+        $deptW    = $deptPerc / 100.0;
+        $indW     = $indPerc  / 100.0;
+
+        // 5. Final Score
+        $finalScore = round($deptScore * $deptW + $individualScore * $indW, 2);
+
+        // 6. Upsert into `scores`
+        $up = $this->pdo->prepare("
+            INSERT INTO scores
+              (user_id, dept_id, month, dept_score, individual_score, final_score)
+            VALUES
+              (:user, :dept, :m, :dscore, :iscore, :fscore)
+            ON DUPLICATE KEY UPDATE
+              dept_score       = VALUES(dept_score),
+              individual_score = VALUES(individual_score),
+              final_score      = VALUES(final_score),
+              dept_id          = VALUES(dept_id)
+        ");
+        $up->execute([
+            ':user'   => $targetUserId,
+            ':dept'   => $deptId,
+            ':m'      => $month,
+            ':dscore' => round($deptScore, 2),
+            ':iscore' => round($individualScore, 2),
+            ':fscore' => $finalScore,
+        ]);
     }
 
-    // ---------------------------------------------------------------------
-    // PRIVATE UTILS
-    // ---------------------------------------------------------------------
+    //======================================================================
+    // 4. PENDING EVALUATIONS COUNT (UNCHANGED)
+    //======================================================================
 
-    /** Get dept_id for a user, or null */
+    public function countPendingEvaluations(int $evaluatorId, string $month): int
+    {
+        $total = (int)$this->selectScalar("
+            SELECT COUNT(*) FROM users
+             WHERE dept_id  = (SELECT dept_id FROM users WHERE user_id = :uid)
+               AND user_id <> :uid
+               AND active   = 1
+        ", [':uid' => $evaluatorId]);
+
+        $done = (int)$this->selectScalar("
+            SELECT COUNT(DISTINCT evaluatee_id)
+              FROM individual_evaluations
+             WHERE evaluator_id = :uid
+               AND month        = :m
+        ", [':uid' => $evaluatorId, ':m' => $month]);
+
+        return max(0, $total - $done);
+    }
+
+    //======================================================================
+    // 5. PRIVATE HELPERS
+    //======================================================================
+
     private function fetchDeptId(int $userId): ?int
     {
         return $this->selectScalar(
@@ -255,48 +308,33 @@ public function fetchTeamMembers(int $managerId): array
         );
     }
 
-    /** Ensure month string is `YYYY-MM-01` */
     private function assertMonth(string $month): void
     {
         if (!preg_match('/^\d{4}-\d{2}-01$/', $month)) {
-            throw new Exception('Invalid month format, expected YYYY-MM-01');
+            throw new Exception("Invalid month: $month");
         }
     }
 
-    /** Run SELECT and return all rows */
     private function select(string $sql, array $params): array
     {
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
-
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    /** Run SELECT and return single row */
     private function selectOne(string $sql, array $params): ?array
     {
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
-
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
         return $row ?: null;
     }
 
-    /** Run SELECT and return first column of first row */
-    private function selectScalar(string $sql, array $params): ?int
+    private function selectScalar(string $sql, array $params)
     {
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
-
         $val = $stmt->fetchColumn();
-
-        return $val === false ? null : (int)$val;
+        return $val === false ? null : $val;
     }
 }
-
-// -------------------------------------------------------------------------
-// USAGE EXAMPLE (delete after wiring into controllers)
-// -------------------------------------------------------------------------
-$evalRepo = $evalRepo ?? new EvaluationRepository($pdo);
-

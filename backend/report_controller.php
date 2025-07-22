@@ -371,20 +371,26 @@ final class ReportRepository
 
     public function pendingEvaluations(int $evaluatorId, string $month): int
     {
+        // Total teammates in the same department (excluding self)
         $total = (int)$this->selectScalar(
-            'SELECT COUNT(*) FROM users
-             WHERE dept_id = (SELECT dept_id FROM users WHERE user_id = :uid_inner)
-               AND user_id <> :uid_outer AND active = 1',
-            [':uid_inner' => $evaluatorId, ':uid_outer' => $evaluatorId]
+            'SELECT COUNT(*) 
+             FROM users
+             WHERE dept_id = (SELECT dept_id FROM users WHERE user_id = :uid) 
+               AND user_id <> :uid AND active = 1',
+            [':uid' => $evaluatorId]
         );
+    
+        // Number of distinct colleagues this user has already evaluated this month
         $done = (int)$this->selectScalar(
             'SELECT COUNT(DISTINCT evaluatee_id)
-               FROM individual_evaluations
-              WHERE evaluator_id = :u AND month = :m',
-            [':u' => $evaluatorId, ':m' => $month]
+             FROM individual_evaluations
+             WHERE evaluator_id = :uid AND month = :m',
+            [':uid' => $evaluatorId, ':m' => $month]
         );
+    
         return max(0, $total - $done);
     }
+    
 
     public function activeDeptCountForMonth(?string $month = null): int
     {
