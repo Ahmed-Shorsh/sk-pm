@@ -373,11 +373,14 @@ final class ReportRepository
     {
         // Total teammates in the same department (excluding self)
         $total = (int)$this->selectScalar(
-            'SELECT COUNT(*) 
+            'SELECT COUNT(*)
              FROM users
-             WHERE dept_id = (SELECT dept_id FROM users WHERE user_id = :uid) 
-               AND user_id <> :uid AND active = 1',
-            [':uid' => $evaluatorId]
+             WHERE dept_id = (SELECT dept_id FROM users WHERE user_id = :uid)
+               AND user_id <> :uid2 AND active = 1',
+            [
+              ':uid'  => $evaluatorId,
+              ':uid2' => $evaluatorId,
+            ]
         );
     
         // Number of distinct colleagues this user has already evaluated this month
