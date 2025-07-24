@@ -7,7 +7,7 @@ $root = dirname(__DIR__);
 
 /* ───── Autoload + DB ───── */
 require_once $root . '/vendor/autoload.php';
-require_once $root . '/backend/db.php';           // provides $pdo
+require_once $root . '/backend/db.php';          
 
 use Backend\SettingsRepository;
 

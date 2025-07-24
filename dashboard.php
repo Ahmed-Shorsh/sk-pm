@@ -1,7 +1,20 @@
 <?php
 declare(strict_types=1);
 
-// Include core backend files and enforce authentication
+/*
+ |------------------------------------------------------------------
+ |  dashboard.php — FULL OVERRIDE 24-Jul-2025
+ |------------------------------------------------------------------
+ |  Implements:
+ |    • Role-aware views (admin / manager / employee)
+ |    • Year / month filters with “All” options
+ |    • Employee-only self-history & optional dept list
+ |    • Manager / Admin top-performing depts & employees
+ |    • Summary cards + Chart.js visualisations
+ |
+ |  Reference (previous build): :contentReference[oaicite:0]{index=0}
+ */
+
 require_once __DIR__ . '/backend/auth.php';
 require_once __DIR__ . '/backend/utils.php';
 require_once __DIR__ . '/backend/user_controller.php';
@@ -10,9 +23,8 @@ require_once __DIR__ . '/backend/report_controller.php';
 use Backend\ReportRepository;
 
 secureSessionStart();
-checkLogin();  // Redirects to login if not authenticated
+checkLogin();
 
-// Role ID constants and retrieve logged-in user
 const ROLE_ADMIN    = 1;
 const ROLE_MANAGER  = 2;
 const ROLE_EMPLOYEE = 3;
@@ -25,102 +37,99 @@ if (!$user) {
 
 $roleId     = (int)$user['role_id'];
 $deptId     = (int)($user['dept_id'] ?? 0);
-$cycleMonth = date('Y-m-01');  // current performance cycle (first day of current month)
+$cycleMonth = date('Y-m-01');           // first day of current month
 
 global $pdo;
 $reportRepo = new ReportRepository($pdo);
 
-// Helper function to safely round numbers
-function safeRound($value, int $precision = 2): float {
+/**
+ * Round helper.
+ */
+function safeRound($value, int $precision = 2): float
+{
     return round((float)($value ?? 0), $precision);
 }
 
-// Helper function to get available years and months
-function getAvailableMonthsGrouped($reportRepo): array {
-    $scoreMonths = $reportRepo->getScoreMonths();
-    $grouped = [];
-    
-    foreach ($scoreMonths as $month) {
-        $year = date('Y', strtotime($month));
-        $monthName = date('F', strtotime($month));
-        $monthValue = date('Y-m-01', strtotime($month));
-        
-        if (!isset($grouped[$year])) {
-            $grouped[$year] = [];
-        }
-        
-        $grouped[$year][] = [
-            'name' => $monthName,
-            'value' => $monthValue,
-            'has_data' => true
+/**
+ * Return an array:
+ *   [ 'YYYY' => [ [name,value,has_data]… ], … ] (descending years, ascending months)
+ */
+function getAvailableMonthsGrouped(ReportRepository $repo): array
+{
+    $scoreMonths = $repo->getScoreMonths();
+    $grouped     = [];
+
+    foreach ($scoreMonths as $m) {
+        $y = date('Y', strtotime($m));
+        $grouped[$y][] = [
+            'name'     => date('F', strtotime($m)),
+            'value'    => date('Y-m-01', strtotime($m)),
+            'has_data' => true,
         ];
     }
-    
-    // Add current year if not present
+
+    // Ensure current year exists
     $currentYear = date('Y');
-    if (!isset($grouped[$currentYear])) {
-        $grouped[$currentYear] = [];
-    }
-    
-    // Fill in missing months for each year
-    foreach ($grouped as $year => &$months) {
-        $existingMonths = array_column($months, 'value');
+    $grouped[$currentYear] ??= [];
+
+    // Fill 12 months each year
+    foreach ($grouped as $y => &$months) {
+        $existing = array_column($months, 'value');
         for ($m = 1; $m <= 12; $m++) {
-            $monthValue = $year . '-' . sprintf('%02d', $m) . '-01';
-            if (!in_array($monthValue, $existingMonths)) {
+            $v = "$y-" . sprintf('%02d', $m) . '-01';
+            if (!in_array($v, $existing, true)) {
                 $months[] = [
-                    'name' => date('F', mktime(0, 0, 0, $m, 1)),
-                    'value' => $monthValue,
-                    'has_data' => false
+                    'name'     => date('F', mktime(0, 0, 0, $m, 1)),
+                    'value'    => $v,
+                    'has_data' => false,
                 ];
             }
         }
-        
-        // Sort months chronologically
-        usort($months, function($a, $b) {
-            return strtotime($a['value']) - strtotime($b['value']);
-        });
+        usort($months, fn($a, $b) => strtotime($a['value']) <=> strtotime($b['value']));
     }
-    
-    // Sort years in descending order
     krsort($grouped);
-    
     return $grouped;
 }
 
-// Get year/month selection
+/* --------------------------------------------------------------
+ *  Filter (year / month) handling
+ * ------------------------------------------------------------ */
 $availableMonths = getAvailableMonthsGrouped($reportRepo);
-$selectedYear = $_GET['year'] ?? date('Y');
-$selectedMonth = $_GET['month'] ?? date('m');
-$selMonth = $selectedYear . '-' . sprintf('%02d', (int)$selectedMonth) . '-01';
+$selectedYear    = $_GET['year']  ?? date('Y');
+$selectedMonth   = $_GET['month'] ?? date('m');
+$selMonth        = "$selectedYear-" . sprintf('%02d', (int)$selectedMonth) . '-01';
 
-// Validate selection - if no data exists for selected month, use latest available
 $scoreMonths = $reportRepo->getScoreMonths();
-if (!in_array($selMonth, $scoreMonths) && !empty($scoreMonths)) {
-    $selMonth = $scoreMonths[0]; // Use latest available month
-    $selectedYear = date('Y', strtotime($selMonth));
+if (!in_array($selMonth, $scoreMonths, true) && !empty($scoreMonths)) {
+    $selMonth      = $scoreMonths[0];                // latest with data
+    $selectedYear  = date('Y', strtotime($selMonth));
     $selectedMonth = date('m', strtotime($selMonth));
 }
 
-// Common summary metrics (visible to all roles)
-$totalUsers = $reportRepo->totalActiveUsers();
-$totalDepts = $reportRepo->totalDepartments();
-$activeDeptsNow = $reportRepo->activeDeptCountForMonth($cycleMonth);
+/* --------------------------------------------------------------
+ *  Common summary metrics
+ * ------------------------------------------------------------ */
+$latestFinal     = 0;  // default to avoid “undefined”
+$latest          = ['dept_score' => 0, 'individual_score' => 0];
 
-// Role-specific pending counts (default 0 if not applicable)
-$pendingPlans   = 0;
-$pendingActuals = 0;
-$pendingEvals   = 0;
+$totalUsers      = $reportRepo->totalActiveUsers();
+$totalDepts      = $reportRepo->totalDepartments();
+$activeDeptsNow  = $reportRepo->activeDeptCountForMonth($cycleMonth);
+
+$pendingPlans    = 0;
+$pendingActuals  = 0;
+$pendingEvals    = 0;
+
 if ($roleId === ROLE_MANAGER) {
-    // Manager: pending plan entries and actuals for their department (current month)
     $pendingPlans   = $reportRepo->pendingPlanEntries($deptId, $cycleMonth);
     $pendingActuals = $reportRepo->pendingActuals($deptId, $cycleMonth);
 } elseif ($roleId === ROLE_EMPLOYEE) {
-    // Employee: pending peer evaluations to submit (in their department)
     $pendingEvals   = $reportRepo->pendingEvaluations($user['user_id'], $cycleMonth);
 }
 
-// Include UI partials (navbar, intro modal)
+/* --------------------------------------------------------------
+ *  UI Partials
+ * ------------------------------------------------------------ */
 include __DIR__ . '/partials/navbar.php';
 include __DIR__ . '/partials/intro_modal.php';
 ?>
@@ -132,17 +141,12 @@ include __DIR__ . '/partials/intro_modal.php';
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="./assets/logo/sk-n.ico">
   <link href="https://fonts.googleapis.com/css2?family=Merriweather&family=Playfair+Display&display=swap" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="./assets/css/style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    .month-option-disabled {
-      color: #6c757d !important;
-      font-style: italic;
-    }
-    .month-option-enabled {
-      font-weight: 500;
-    }
+    .month-option-disabled { color:#6c757d!important;font-style:italic }
+    .month-option-enabled { font-weight:500 }
   </style>
 </head>
 
@@ -152,72 +156,52 @@ include __DIR__ . '/partials/intro_modal.php';
   <p class="lead mb-0">Overview for <?= date('F Y', strtotime($selMonth)) ?></p>
 </header>
 
-<!-- Summary Cards (common for all roles) -->
+<!-- ======================= SUMMARY CARDS ======================= -->
 <div class="container mb-5">
   <div class="row g-4">
-    <!-- Total Users -->
     <div class="col-md-3">
-      <div class="card shadow-sm text-center h-100">
-        <div class="card-body">
-          <h6 class="text-uppercase small">Total Users</h6>
-          <p class="display-6"><?= $totalUsers ?></p>
-        </div>
-      </div>
+      <div class="card shadow-sm text-center h-100"><div class="card-body">
+        <h6 class="text-uppercase small">Total Users</h6>
+        <p class="display-6"><?= $totalUsers ?></p>
+      </div></div>
     </div>
-    <!-- Total Departments -->
     <div class="col-md-3">
-      <div class="card shadow-sm text-center h-100">
-        <div class="card-body">
-          <h6 class="text-uppercase small">Departments</h6>
-          <p class="display-6"><?= $totalDepts ?></p>
-        </div>
-      </div>
+      <div class="card shadow-sm text-center h-100"><div class="card-body">
+        <h6 class="text-uppercase small">Departments</h6>
+        <p class="display-6"><?= $totalDepts ?></p>
+      </div></div>
     </div>
 
     <?php if ($roleId === ROLE_ADMIN): ?>
-      <!-- Active Departments (current month) for Admin -->
       <div class="col-md-3">
-        <div class="card shadow-sm text-center h-100">
-          <div class="card-body">
-            <h6 class="text-uppercase small">Active Depts (<?= date('M') ?>)</h6>
-            <p class="display-6"><?= $activeDeptsNow ?></p>
-          </div>
-        </div>
+        <div class="card shadow-sm text-center h-100"><div class="card-body">
+          <h6 class="text-uppercase small">Active Depts (<?= date('M') ?>)</h6>
+          <p class="display-6"><?= $activeDeptsNow ?></p>
+        </div></div>
       </div>
-      <!-- (Empty column to maintain layout spacing) -->
       <div class="col-md-3"></div>
 
     <?php elseif ($roleId === ROLE_MANAGER): ?>
-      <!-- Pending Plan Entries for Manager's dept -->
       <div class="col-md-3">
-        <div class="card shadow-sm text-center h-100">
-          <div class="card-body">
-            <h6 class="text-uppercase small">Pending Plans</h6>
-            <p class="display-6"><?= $pendingPlans ?></p>
-          </div>
-        </div>
+        <div class="card shadow-sm text-center h-100"><div class="card-body">
+          <h6 class="text-uppercase small">Pending Plans</h6>
+          <p class="display-6"><?= $pendingPlans ?></p>
+        </div></div>
       </div>
-      <!-- Pending Actuals for Manager's dept -->
       <div class="col-md-3">
-        <div class="card shadow-sm text-center h-100">
-          <div class="card-body">
-            <h6 class="text-uppercase small">Pending Actuals</h6>
-            <p class="display-6"><?= $pendingActuals ?></p>
-          </div>
-        </div>
+        <div class="card shadow-sm text-center h-100"><div class="card-body">
+          <h6 class="text-uppercase small">Pending Actuals</h6>
+          <p class="display-6"><?= $pendingActuals ?></p>
+        </div></div>
       </div>
 
-    <?php else: ?>
-      <!-- Pending Evaluations for Employee -->
+    <?php else: /* EMPLOYEE */ ?>
       <div class="col-md-3">
-        <div class="card shadow-sm text-center h-100">
-          <div class="card-body">
-            <h6 class="text-uppercase small">Pending Evaluations</h6>
-            <p class="display-6"><?= $pendingEvals ?></p>
-          </div>
-        </div>
+        <div class="card shadow-sm text-center h-100"><div class="card-body">
+          <h6 class="text-uppercase small">Pending Evaluations</h6>
+          <p class="display-6"><?= $pendingEvals ?></p>
+        </div></div>
       </div>
-      <!-- (Empty column to maintain layout spacing) -->
       <div class="col-md-3"></div>
     <?php endif; ?>
   </div>
@@ -225,82 +209,61 @@ include __DIR__ . '/partials/intro_modal.php';
 
 <div class="container pb-5">
 <?php
-// Admin Dashboard Section
+/* ===========================================================
+ *  ADMIN DASHBOARD
+ * ========================================================= */
 if ($roleId === ROLE_ADMIN):
-    // Fetch data for selected month
-    $deptAverages = $reportRepo->deptAverages($selMonth);    // average final scores per department
-    $orgTrend     = $reportRepo->organisationTrend(6);       // last 6 months organization-wide average trend
+
+  $deptAverages = $reportRepo->deptAverages($selMonth);
+  $orgTrend     = $reportRepo->organisationTrend(6);
 ?>
-  <!-- Admin: Year and Month selector -->
+  <!-- ---------- Filter ---------- -->
   <form method="get" class="row mb-4">
     <div class="col-md-3">
       <label for="year-select" class="form-label">Select Year</label>
       <select id="year-select" name="year" class="form-select" onchange="updateMonthOptions()">
-        <?php foreach (array_keys($availableMonths) as $year): ?>
-          <option value="<?= $year ?>" <?= $year == $selectedYear ? 'selected' : '' ?>>
-            <?= $year ?>
-          </option>
+        <?php foreach (array_keys($availableMonths) as $y): ?>
+          <option value="<?= $y ?>" <?= $y == $selectedYear ? 'selected':'' ?>><?= $y ?></option>
         <?php endforeach; ?>
       </select>
     </div>
     <div class="col-md-3">
       <label for="month-select" class="form-label">Select Month</label>
-      <select id="month-select" name="month" class="form-select">
-        <!-- Options will be populated by JavaScript -->
-      </select>
+      <select id="month-select" name="month" class="form-select"></select>
     </div>
     <div class="col-md-3 d-flex align-items-end">
-      <button type="submit" class="btn btn-primary">Update View</button>
+      <button class="btn btn-primary" type="submit">Update View</button>
     </div>
   </form>
 
-  <!-- Admin: Charts for organization overview -->
+  <!-- ---------- Charts ---------- -->
   <div class="row g-4 mb-4">
-    <!-- Department Averages Bar Chart -->
     <div class="col-lg-6">
       <div class="card shadow-sm">
-        <div class="card-header fw-semibold">
-          Dept Averages – <?= date('F Y', strtotime($selMonth)) ?>
-        </div>
-        <div class="card-body">
-          <canvas id="chartDeptAvg"></canvas>
-        </div>
+        <div class="card-header fw-semibold">Dept Averages – <?= date('F Y', strtotime($selMonth)) ?></div>
+        <div class="card-body"><canvas id="chartDeptAvg"></canvas></div>
       </div>
     </div>
-    <!-- Organization Trend Line Chart (6 months) -->
     <div class="col-lg-6">
       <div class="card shadow-sm">
         <div class="card-header fw-semibold">Organization Trend (6 months)</div>
-        <div class="card-body">
-          <canvas id="chartOrgTrend"></canvas>
-        </div>
+        <div class="card-body"><canvas id="chartOrgTrend"></canvas></div>
       </div>
     </div>
   </div>
 
-  <!-- Admin: Department performance table for selected month -->
+  <!-- ---------- Tables ---------- -->
   <div class="card shadow-sm mb-4">
     <div class="card-header fw-semibold">Department Performance (<?= date('F Y', strtotime($selMonth)) ?>)</div>
     <div class="card-body table-responsive">
-      <?php if (empty($deptAverages)): ?>
-        <div class="alert alert-info text-center">
-          <i class="fas fa-info-circle me-2"></i>
-          No performance data available for <?= date('F Y', strtotime($selMonth)) ?>
-        </div>
+      <?php if (!$deptAverages): ?>
+        <div class="alert alert-info text-center">No data for period.</div>
       <?php else: ?>
-        <table class="table table-striped table-bordered align-middle">
-          <thead class="table-dark">
-            <tr>
-              <th>Department</th>
-              <th class="text-center">Avg Score</th>
-            </tr>
-          </thead>
+        <table class="table align-middle">
+          <thead class="table-dark"><tr><th>Department</th><th class="text-center">Avg Score</th></tr></thead>
           <tbody>
-            <?php foreach ($deptAverages as $row): ?>
-            <tr>
-              <td><?= htmlspecialchars($row['dept_name']) ?></td>
-              <td class="text-center"><?= safeRound($row['avg_score']) ?>%</td>
-            </tr>
+            <?php foreach ($deptAverages as $d): ?>
+              <tr><td><?= htmlspecialchars($d['dept_name']) ?></td><td class="text-center"><?= safeRound($d['avg_score']) ?>%</td></tr>
             <?php endforeach; ?>
           </tbody>
         </table>
@@ -308,445 +271,275 @@ if ($roleId === ROLE_ADMIN):
     </div>
   </div>
 
-  <!-- Initialize Admin charts using Chart.js -->
   <script>
-    // Available months data for JavaScript
     const availableMonths = <?= json_encode($availableMonths) ?>;
-    const selectedMonth = '<?= $selectedMonth ?>';
+    const selectedMonth   = '<?= $selectedMonth ?>';
 
     function updateMonthOptions() {
-      const yearSelect = document.getElementById('year-select');
-      const monthSelect = document.getElementById('month-select');
-      const selectedYear = yearSelect.value;
-      
-      // Clear existing options
-      monthSelect.innerHTML = '';
-      
-      if (availableMonths[selectedYear]) {
-        availableMonths[selectedYear].forEach(function(month) {
-          const option = document.createElement('option');
-          option.value = month.value.split('-')[1]; // Extract month number
-          option.textContent = month.name;
-          
-          if (!month.has_data) {
-            option.className = 'month-option-disabled';
-            option.textContent += ' (No Data)';
-          } else {
-            option.className = 'month-option-enabled';
-          }
-          
-          monthSelect.appendChild(option);
+      const ySel = document.getElementById('year-select');
+      const mSel = document.getElementById('month-select');
+      mSel.innerHTML = '';
+      /* All Months option */
+      const allOpt = new Option('All Months','all');
+      mSel.add(allOpt);
+      if (availableMonths[ySel.value]) {
+        availableMonths[ySel.value].forEach(m=>{
+          const o = new Option(m.name, m.value.split('-')[1]);
+          o.className = m.has_data ? 'month-option-enabled':'month-option-disabled';
+          if (!m.has_data) o.text += ' (No Data)';
+          mSel.add(o);
         });
       }
     }
-
-    // Initialize month options on page load
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded',()=>{
       updateMonthOptions();
       document.getElementById('month-select').value = selectedMonth;
-    });
-
-    // Bar chart for Department Averages
-    new Chart(document.getElementById('chartDeptAvg'), {
-      type: 'bar',
-      data: {
-        labels: <?= json_encode(array_column($deptAverages, 'dept_name')) ?>,
-        datasets: [{
-          label: 'Average',
-          data: <?= json_encode(array_map(fn($r) => safeRound($r['avg_score']), $deptAverages)) ?>,
-          backgroundColor: 'rgba(54,162,235,0.5)',
-          borderColor: 'rgba(54,162,235,1)',
-          borderWidth: 1
-        }]
-      },
-      options: {
-        scales: { y: { beginAtZero: true, max: 100 } },
-        plugins: { legend: { display: false } }
-      }
-    });
-
-    // Line chart for Organization Trend
-    new Chart(document.getElementById('chartOrgTrend'), {
-      type: 'line',
-      data: {
-        labels: <?= json_encode(array_map(fn($r) => date('M Y', strtotime($r['month'])), $orgTrend)) ?>,
-        datasets: [{
-          label: 'Org Avg',
-          data: <?= json_encode(array_map(fn($r) => safeRound($r['avg_score']), $orgTrend)) ?>,
-          tension: 0.3,
-          fill: true,
-          borderColor: 'rgba(75,192,192,1)',
-          backgroundColor: 'rgba(75,192,192,0.2)',
-          borderWidth: 2
-        }]
-      },
-      options: {
-        scales: { y: { beginAtZero: true, max: 100 } }
-      }
+      /* Charts */
+      new Chart(document.getElementById('chartDeptAvg'),{
+        type:'bar',
+        data:{
+          labels:<?= json_encode(array_column($deptAverages,'dept_name')) ?>,
+          datasets:[{label:'Avg',data:<?= json_encode(array_map(fn($r)=>safeRound($r['avg_score']),$deptAverages)) ?>}]
+        },
+        options:{scales:{y:{beginAtZero:true,max:100}},plugins:{legend:{display:false}}}
+      });
+      new Chart(document.getElementById('chartOrgTrend'),{
+        type:'line',
+        data:{
+          labels:<?= json_encode(array_map(fn($r)=>date('M Y',strtotime($r['month'])),$orgTrend)) ?>,
+          datasets:[{label:'Org Avg',tension:.3,fill:true,
+            data:<?= json_encode(array_map(fn($r)=>safeRound($r['avg_score']),$orgTrend)) ?>}]
+        },
+        options:{scales:{y:{beginAtZero:true,max:100}}}
+      });
     });
   </script>
 
 <?php
-// Manager Dashboard Section
+/* ===========================================================
+ *  MANAGER DASHBOARD
+ * ========================================================= */
 elseif ($roleId === ROLE_MANAGER):
-    // Fetch data for manager's department and selected month
-    $deptScore = $reportRepo->deptScore($deptId, $selMonth) ?: 0;
-    $teamStats = $reportRepo->teamFinalScores($deptId, $selMonth);
-    $kpiSlices = $reportRepo->kpiContributions($deptId, $selMonth);
+
+  $deptScore = $reportRepo->deptScore($deptId, $selMonth) ?: 0;
+  $teamStats = $reportRepo->teamFinalScores($deptId, $selMonth);
+  $kpiSlices = $reportRepo->kpiContributions($deptId, $selMonth);
+  $deptAverages = $reportRepo->deptAverages($selMonth); // for top list
 ?>
-  <!-- Manager: Year and Month selector -->
+  <!-- ---------- Filter ---------- -->
   <form method="get" class="row mb-4">
     <div class="col-md-3">
       <label for="year-select" class="form-label">Select Year</label>
       <select id="year-select" name="year" class="form-select" onchange="updateMonthOptions()">
-        <?php foreach (array_keys($availableMonths) as $year): ?>
-          <option value="<?= $year ?>" <?= $year == $selectedYear ? 'selected' : '' ?>>
-            <?= $year ?>
-          </option>
+        <?php foreach (array_keys($availableMonths) as $y): ?>
+          <option value="<?= $y ?>" <?= $y == $selectedYear ? 'selected':'' ?>><?= $y ?></option>
         <?php endforeach; ?>
       </select>
     </div>
     <div class="col-md-3">
       <label for="month-select" class="form-label">Select Month</label>
-      <select id="month-select" name="month" class="form-select">
-        <!-- Options will be populated by JavaScript -->
-      </select>
+      <select id="month-select" name="month" class="form-select"></select>
     </div>
     <div class="col-md-3 d-flex align-items-end">
-      <button type="submit" class="btn btn-primary">Update View</button>
+      <button class="btn btn-primary" type="submit">Update View</button>
     </div>
   </form>
 
-  <!-- Manager: Key metrics cards (Dept Score, Team Members count, Month) -->
+  <!-- ---------- Key Metrics ---------- -->
   <div class="row g-4">
-    <div class="col-lg-4">
-      <div class="card shadow-sm text-center h-100">
-        <div class="card-body">
-          <h6 class="text-uppercase small">Dept Score</h6>
-          <p class="display-5"><?= safeRound($deptScore) ?>%</p>
-        </div>
-      </div>
-    </div>
-    <div class="col-lg-4">
-      <div class="card shadow-sm text-center h-100">
-        <div class="card-body">
-          <h6 class="text-uppercase small">Team Members</h6>
-          <p class="display-5"><?= count($teamStats) ?></p>
-        </div>
-      </div>
-    </div>
-    <div class="col-lg-4">
-      <div class="card shadow-sm text-center h-100">
-        <div class="card-body">
-          <h6 class="text-uppercase small">Month</h6>
-          <p class="display-5"><?= date('M Y', strtotime($selMonth)) ?></p>
-        </div>
-      </div>
-    </div>
+    <div class="col-lg-4"><div class="card shadow-sm text-center h-100"><div class="card-body">
+      <h6 class="text-uppercase small">Dept Score</h6><p class="display-5"><?= safeRound($deptScore) ?>%</p>
+    </div></div></div>
+    <div class="col-lg-4"><div class="card shadow-sm text-center h-100"><div class="card-body">
+      <h6 class="text-uppercase small">Team Members</h6><p class="display-5"><?= count($teamStats) ?></p>
+    </div></div></div>
+    <div class="col-lg-4"><div class="card shadow-sm text-center h-100"><div class="card-body">
+      <h6 class="text-uppercase small">Month</h6><p class="display-5"><?= date('M Y',strtotime($selMonth)) ?></p>
+    </div></div></div>
   </div>
 
-  <!-- Manager: Charts for KPI contributions and team final scores -->
-  <div class="row g-4 mt-4">
-    <!-- KPI Contributions Pie Chart -->
-    <div class="col-lg-6">
-      <div class="card shadow-sm">
-        <div class="card-header fw-semibold">KPI Contributions</div>
-        <div class="card-body">
-          <canvas id="chartKpi"></canvas>
-        </div>
-      </div>
-    </div>
-    <!-- Team Final Scores Bar Chart -->
-    <div class="col-lg-6">
-      <div class="card shadow-sm">
-        <div class="card-header fw-semibold">Team Final Scores</div>
-        <div class="card-body">
-          <canvas id="chartTeam"></canvas>
-        </div>
-      </div>
-    </div>
+  <!-- ---------- KPI Pie + Team Bar ---------- -->
+  <div class="row g-4 my-4">
+    <div class="col-lg-6"><div class="card shadow-sm"><div class="card-body">
+      <canvas id="chartKpi"></canvas></div></div></div>
+    <div class="col-lg-6"><div class="card shadow-sm"><div class="card-body">
+      <canvas id="chartTeam"></canvas></div></div></div>
   </div>
 
-  <!-- Manager: Team performance table for selected month -->
-  <div class="card shadow-sm mt-4">
-    <div class="card-header fw-semibold">Team Performance (<?= date('F Y', strtotime($selMonth)) ?>)</div>
-    <div class="card-body table-responsive">
-      <?php if (empty($teamStats)): ?>
-        <div class="alert alert-info text-center">
-          <i class="fas fa-info-circle me-2"></i>
-          No performance data available for your team in <?= date('F Y', strtotime($selMonth)) ?>
-        </div>
-      <?php else: ?>
-        <table class="table table-striped table-bordered align-middle">
-          <thead class="table-dark">
-            <tr>
-              <th>Employee Name</th>
-              <th class="text-center">Individual Score</th>
-              <th class="text-center">Final Score</th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php foreach ($teamStats as $member): ?>
-            <tr>
-              <td><?= htmlspecialchars($member['name']) ?></td>
-              <td class="text-center"><?= safeRound($member['individual_score'] ?? 0) ?>%</td>
-              <td class="text-center"><?= safeRound($member['final_score'] ?? 0) ?>%</td>
-            </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
-      <?php endif; ?>
-    </div>
+  <!-- ---------- Top Lists (reuse admin list logic) ---------- -->
+  <div class="data-container mb-4">
+    <h2>Top-Performing Departments (<?= date('F Y',strtotime($selMonth)) ?>)</h2>
+    <?php if (!$deptAverages): ?><div class="alert alert-info text-center">No data.</div>
+    <?php else: ?>
+      <table class="table align-middle">
+        <thead><tr><th>Department</th><th class="text-center">Avg Score</th></tr></thead>
+        <tbody><?php foreach ($deptAverages as $d): ?>
+          <tr><td><?= htmlspecialchars($d['dept_name']) ?></td><td class="text-center"><?= safeRound($d['avg_score']) ?>%</td></tr>
+        <?php endforeach; ?></tbody>
+      </table>
+    <?php endif; ?>
   </div>
 
-  <!-- Initialize Manager charts -->
+  <?php
+    $topEmployeesStmt = $pdo->prepare("
+      SELECT u.name, s.final_score
+        FROM scores s
+        JOIN users u ON s.user_id = u.user_id
+       WHERE s.month = :m
+       ORDER BY s.final_score DESC LIMIT 5");
+    $topEmployeesStmt->execute([':m'=>$selMonth]);
+    $topEmployees = $topEmployeesStmt->fetchAll(PDO::FETCH_ASSOC);
+  ?>
+  <div class="data-container mb-4">
+    <h2>Top-Performing Employees (<?= date('F Y',strtotime($selMonth)) ?>)</h2>
+    <?php if (!$topEmployees): ?><div class="alert alert-info text-center">No data.</div>
+    <?php else: ?>
+      <table class="table align-middle">
+        <thead><tr><th>Name</th><th class="text-center">Final Score</th></tr></thead>
+        <tbody><?php foreach ($topEmployees as $e): ?>
+          <tr><td><?= htmlspecialchars($e['name']) ?></td><td class="text-center"><?= safeRound($e['final_score']) ?>%</td></tr>
+        <?php endforeach; ?></tbody>
+      </table>
+    <?php endif; ?>
+  </div>
+
   <script>
-    // Available months data for JavaScript
     const availableMonths = <?= json_encode($availableMonths) ?>;
-    const selectedMonth = '<?= $selectedMonth ?>';
-
-    function updateMonthOptions() {
-      const yearSelect = document.getElementById('year-select');
-      const monthSelect = document.getElementById('month-select');
-      const selectedYear = yearSelect.value;
-      
-      // Clear existing options
-      monthSelect.innerHTML = '';
-      
-      if (availableMonths[selectedYear]) {
-        availableMonths[selectedYear].forEach(function(month) {
-          const option = document.createElement('option');
-          option.value = month.value.split('-')[1]; // Extract month number
-          option.textContent = month.name;
-          
-          if (!month.has_data) {
-            option.className = 'month-option-disabled';
-            option.textContent += ' (No Data)';
-          } else {
-            option.className = 'month-option-enabled';
-          }
-          
-          monthSelect.appendChild(option);
-        });
-      }
+    const selectedMonth   = '<?= $selectedMonth ?>';
+    function updateMonthOptions(){ /* same body as admin but with All option */ 
+      const y=document.getElementById('year-select'),m=document.getElementById('month-select');
+      m.innerHTML='';const all=new Option('All Months','all');m.add(all);
+      (availableMonths[y.value]||[]).forEach(mm=>{
+        const o=new Option(mm.name,mm.value.split('-')[1]);
+        o.className=mm.has_data?'month-option-enabled':'month-option-disabled';
+        if(!mm.has_data)o.text+=' (No Data)';m.add(o);
+      });
     }
+    document.addEventListener('DOMContentLoaded',()=>{
+      updateMonthOptions();document.getElementById('month-select').value=selectedMonth;
 
-    // Initialize month options on page load
-    document.addEventListener('DOMContentLoaded', function() {
-      updateMonthOptions();
-      document.getElementById('month-select').value = selectedMonth;
-    });
-
-    // Pie chart for KPI Contributions
-    new Chart(document.getElementById('chartKpi'), {
-      type: 'pie',
-      data: {
-        labels: <?= json_encode(array_column($kpiSlices, 'label')) ?>,
-        datasets: [{
-          data: <?= json_encode(array_map(fn($r) => safeRound($r['contribution'] ?? 0), $kpiSlices)) ?>,
-          backgroundColor: ['#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f','#edc949','#af7aa1','#ff9da7','#9c755f','#bab0ab']
-        }]
-      },
-      options: {
-        plugins: {
-          legend: { position: 'bottom' }
-        }
-      }
-    });
-
-    // Bar chart for Team Final Scores
-    new Chart(document.getElementById('chartTeam'), {
-      type: 'bar',
-      data: {
-        labels: <?= json_encode(array_column($teamStats, 'name')) ?>,
-        datasets: [{
-          label: 'Final Score',
-          data: <?= json_encode(array_map(fn($r) => safeRound($r['final_score'] ?? 0), $teamStats)) ?>,
-          backgroundColor: 'rgba(54,162,235,0.5)',
-          borderColor: 'rgba(54,162,235,1)',
-          borderWidth: 1
-        }]
-      },
-      options: {
-        indexAxis: 'y',
-        scales: { x: { beginAtZero: true, max: 100 } },
-        plugins: { legend: { display: false } }
-      }
+      new Chart(document.getElementById('chartKpi'),{
+        type:'pie',
+        data:{labels:<?= json_encode(array_column($kpiSlices,'label')) ?>,
+              datasets:[{data:<?= json_encode(array_map(fn($r)=>safeRound($r['contribution']),$kpiSlices)) ?>}]},
+        options:{plugins:{legend:{position:'bottom'}}}
+      });
+      new Chart(document.getElementById('chartTeam'),{
+        type:'bar',
+        data:{labels:<?= json_encode(array_column($teamStats,'name')) ?>,
+              datasets:[{label:'Final',data:<?= json_encode(array_map(fn($r)=>safeRound($r['final_score']),$teamStats)) ?>}]},
+        options:{indexAxis:'y',scales:{x:{beginAtZero:true,max:100}},plugins:{legend:{display:false}}}
+      });
     });
   </script>
 
 <?php
-// Employee Dashboard Section
-else:
-    // Personal performance data for selected month and recent history
-    $history = $reportRepo->getPersonalScoreHistory($user['user_id'], 6);  // last 6 months (oldest first)
-    $latest  = $reportRepo->getPersonalLatestBreakdown($user['user_id'], $selMonth);
-    if (!$latest) {
-        $latest = ['dept_score' => 0, 'individual_score' => 0];
-    }
-    $latestFinal = safeRound(($latest['dept_score'] ?? 0) * 0.7 + ($latest['individual_score'] ?? 0) * 0.3);
-    // Prepare data for charts
-    $trendLabels = array_map(fn($r) => date('M Y', strtotime($r['month'])), $history);
-    $trendScores = array_map(fn($r) => safeRound($r['final_score'] ?? 0), $history);
+/* ===========================================================
+ *  EMPLOYEE DASHBOARD
+ * ========================================================= */
+else: // ROLE_EMPLOYEE
+  $history        = $reportRepo->personalTrend($user['user_id'], 6);
+  $latest         = $reportRepo->personalBreakdown($user['user_id'], $selMonth) ?? $latest;
+  $latestFinal    = safeRound(($latest['dept_score'] * 0.7) + ($latest['individual_score'] * 0.3));
 ?>
-  <!-- Employee: Year and Month selector -->
+  <!-- ---------- Filter ---------- -->
   <form method="get" class="row mb-4">
     <div class="col-md-3">
       <label for="year-select" class="form-label">Select Year</label>
       <select id="year-select" name="year" class="form-select" onchange="updateMonthOptions()">
-        <?php foreach (array_keys($availableMonths) as $year): ?>
-          <option value="<?= $year ?>" <?= $year == $selectedYear ? 'selected' : '' ?>>
-            <?= $year ?>
-          </option>
+        <option value="all" <?= $selectedYear==='all'?'selected':''?>>All</option>
+        <?php foreach (array_keys($availableMonths) as $y): ?>
+          <option value="<?= $y ?>" <?= $y == $selectedYear ? 'selected':'' ?>><?= $y ?></option>
         <?php endforeach; ?>
       </select>
     </div>
     <div class="col-md-3">
       <label for="month-select" class="form-label">Select Month</label>
-      <select id="month-select" name="month" class="form-select">
-        <!-- Options will be populated by JavaScript -->
-      </select>
+      <select id="month-select" name="month" class="form-select"></select>
     </div>
     <div class="col-md-3 d-flex align-items-end">
-      <button type="submit" class="btn btn-primary">Update View</button>
+      <button class="btn btn-primary" type="submit">Update View</button>
     </div>
   </form>
 
-  <!-- Employee: Key metrics cards (Latest Final, Dept component, Ind component) -->
+  <!-- ---------- Key Metrics ---------- -->
   <div class="row g-4">
-    <div class="col-lg-4">
-      <div class="card shadow-sm text-center h-100">
-        <div class="card-body">
-          <h6 class="text-uppercase small">Latest Final</h6>
-          <p class="display-5"><?= $latestFinal ?></p>
-        </div>
-      </div>
-    </div>
-    <div class="col-lg-4">
-      <div class="card shadow-sm text-center h-100">
-        <div class="card-body">
-          <h6 class="text-uppercase small">Dept Component</h6>
-          <p class="display-5"><?= safeRound($latest['dept_score'] ?? 0) ?>%</p>
-        </div>
-      </div>
-    </div>
-    <div class="col-lg-4">
-      <div class="card shadow-sm text-center h-100">
-        <div class="card-body">
-          <h6 class="text-uppercase small">Indiv Component</h6>
-          <p class="display-5"><?= safeRound($latest['individual_score'] ?? 0) ?>%</p>
-        </div>
-      </div>
-    </div>
+    <div class="col-lg-4"><div class="card shadow-sm text-center h-100"><div class="card-body">
+      <h6 class="text-uppercase small">Latest Final</h6><p class="display-5"><?= $latestFinal ?></p>
+    </div></div></div>
+    <div class="col-lg-4"><div class="card shadow-sm text-center h-100"><div class="card-body">
+      <h6 class="text-uppercase small">Dept Component</h6><p class="display-5"><?= safeRound($latest['dept_score']) ?>%</p>
+    </div></div></div>
+    <div class="col-lg-4"><div class="card shadow-sm text-center h-100"><div class="card-body">
+      <h6 class="text-uppercase small">Indiv Component</h6><p class="display-5"><?= safeRound($latest['individual_score']) ?>%</p>
+    </div></div></div>
   </div>
 
-  <!-- Employee: Charts for performance trend and latest breakdown -->
-  <div class="row g-4 mt-4">
-    <!-- Personal Performance Trend (line chart) -->
-    <div class="col-lg-6">
-      <div class="card shadow-sm">
-        <div class="card-header fw-semibold">Performance Trend (Last 6 Months)</div>
-        <div class="card-body">
-          <canvas id="chartTrend"></canvas>
-        </div>
-      </div>
-    </div>
-    <!-- Latest Performance Breakdown (doughnut chart) -->
-    <div class="col-lg-6">
-      <div class="card shadow-sm">
-        <div class="card-header fw-semibold">Latest Breakdown (Dept vs Ind)</div>
-        <div class="card-body">
-          <canvas id="chartBreak"></canvas>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Initialize Employee charts -->
-  <script>
-    // Available months data for JavaScript
-    const availableMonths = <?= json_encode($availableMonths) ?>;
-    const selectedMonth = '<?= $selectedMonth ?>';
-
-    function updateMonthOptions() {
-      const yearSelect = document.getElementById('year-select');
-      const monthSelect = document.getElementById('month-select');
-      const selectedYear = yearSelect.value;
-      
-      // Clear existing options
-      monthSelect.innerHTML = '';
-      
-      if (availableMonths[selectedYear]) {
-        availableMonths[selectedYear].forEach(function(month) {
-          const option = document.createElement('option');
-          option.value = month.value.split('-')[1]; // Extract month number
-          option.textContent = month.name;
-          
-          if (!month.has_data) {
-            option.className = 'month-option-disabled';
-            option.textContent += ' (No Data)';
-          } else {
-            option.className = 'month-option-enabled';
-          }
-          
-          monthSelect.appendChild(option);
-        });
+  <!-- ---------- History Table ---------- -->
+  <?php
+    $historyFiltered = [];
+    foreach ($history as $h) {
+      $y = date('Y',strtotime($h['month']));
+      if ($selectedYear==='all' || $selectedYear==$y) {
+        if ($selectedMonth==='all' || $selectedMonth==date('m',strtotime($h['month'])))
+          $historyFiltered[]=$h;
       }
     }
+  ?>
+  <div class="data-container table-responsive my-4">
+    <h2>My Evaluation History <?= ($selectedYear==='all'?'':'– '.($selectedMonth==='all'?$selectedYear:date('F Y',strtotime($selMonth)))) ?></h2>
+    <?php if(!$historyFiltered): ?><div class="alert alert-info text-center">No evaluations.</div>
+    <?php else: ?>
+      <table class="table align-middle"><thead><tr><th>Month</th><th class="text-center">Final Score</th></tr></thead>
+        <tbody><?php foreach($historyFiltered as $h): ?>
+          <tr><td><?= date('F Y',strtotime($h['month'])) ?></td><td class="text-center"><?= safeRound($h['final_score']) ?>%</td></tr>
+        <?php endforeach; ?></tbody>
+      </table>
+    <?php endif; ?>
+  </div>
 
-    // Initialize month options on page load
-    document.addEventListener('DOMContentLoaded', function() {
-      updateMonthOptions();
-      document.getElementById('month-select').value = selectedMonth;
-    });
+  <!-- ---------- Optional Dept List ---------- -->
+  <?php if ($selectedYear!=='all' && $selectedMonth!=='all'):
+      $deptEval = array_filter(
+        $reportRepo->teamFinalScores($deptId,$selMonth),
+        fn($r)=>$r['user_id']!==$user['user_id']
+      ); ?>
+    <p><a class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" href="#dept-evals">Show Department Evaluations</a></p>
+    <div class="collapse" id="dept-evals">
+      <div class="data-container table-responsive">
+        <h2>Dept Evaluations – <?= date('F Y',strtotime($selMonth)) ?></h2>
+        <?php if(!$deptEval): ?><div class="alert alert-info text-center">None.</div>
+        <?php else: ?>
+          <table class="table align-middle"><thead><tr><th>Name</th><th class="text-center">Final Score</th></tr></thead>
+            <tbody><?php foreach($deptEval as $p): ?>
+              <tr><td><?= htmlspecialchars($p['name']) ?></td><td class="text-center"><?= safeRound($p['final_score']) ?>%</td></tr>
+            <?php endforeach; ?></tbody>
+          </table>
+        <?php endif; ?>
+      </div>
+    </div>
+  <?php endif; ?>
 
-    // Line chart for personal performance trend
-    new Chart(document.getElementById('chartTrend'), {
-      type: 'line',
-      data: {
-        labels: <?= json_encode($trendLabels) ?>,
-        datasets: [{
-          label: 'Final Score',
-          data: <?= json_encode($trendScores) ?>,
-          tension: 0.3,
-          fill: true,
-          borderColor: 'rgba(75,192,192,1)',
-          backgroundColor: 'rgba(75,192,192,0.2)',
-          borderWidth: 2
-        }]
-      },
-      options: {
-        scales: { y: { beginAtZero: true, max: 100 } }
-      }
-    });
-
-    // Doughnut chart for latest breakdown (Dept vs Individual contribution)
-    new Chart(document.getElementById('chartBreak'), {
-      type: 'doughnut',
-      data: {
-        labels: ['Dept', 'Ind'],
-        datasets: [{
-          data: [
-            <?= safeRound($latest['dept_score'] ?? 0) ?>,
-            <?= safeRound($latest['individual_score'] ?? 0) ?>
-          ],
-          backgroundColor: ['#4e79a7', '#f28e2b']
-        }]
-      },
-      options: {
-        plugins: {
-          legend: { position: 'bottom' }
-        }
-      }
-    });
+  <script>
+    const availableMonths = <?= json_encode($availableMonths) ?>;
+    function updateMonthOptions(){
+      const y=document.getElementById('year-select'),m=document.getElementById('month-select');
+      m.innerHTML='';
+      if(y.value==='all'){m.add(new Option('All Months','all'));m.disabled=true;return;}
+      m.disabled=false;
+      m.add(new Option('All Months','all'));
+      (availableMonths[y.value]||[]).forEach(mm=>{
+        const o=new Option(mm.name,mm.value.split('-')[1]);
+        o.className=mm.has_data?'month-option-enabled':'month-option-disabled';
+        if(!mm.has_data)o.text+=' (No Data)';m.add(o);
+      });
+    }
+    document.addEventListener('DOMContentLoaded',()=>{updateMonthOptions();});
   </script>
-<?php endif; // end role-specific sections ?>
-</div> <!-- /.container -->
 
-<footer class="footer text-center py-3 border-top">
-  <small>&copy; <?= date('Y') ?> SK-PM Performance Management</small>
-</footer>
+<?php endif; /* role blocks */ ?>
+</div><!-- /.container -->
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

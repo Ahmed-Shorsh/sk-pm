@@ -21,6 +21,13 @@ $deptRepo = $deptRepo ?? new DepartmentRepository($pdo);
 /* -----------------------------------------------------------------------
  * POST HANDLER
  * --------------------------------------------------------------------- */
+/* -----------------------------------------------------------------------
+ * POST HANDLER
+ * --------------------------------------------------------------------- */
+$showSuccessModal = false;
+$showErrorModal = false;
+$modalMessage = '';
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
@@ -43,7 +50,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare('UPDATE users SET rating_window_days = ? WHERE user_id = ?')
                 ->execute([(int)$_POST['rating_window_days'], $uid]);
         }
-        flashMessage($ok ? 'User created.' : 'Error creating user.', $ok ? 'success' : 'danger');
+        
+        if ($ok) {
+            $showSuccessModal = true;
+            $modalMessage = 'User created successfully!';
+        } else {
+            $showErrorModal = true;
+            $modalMessage = 'Error creating user.';
+        }
 
     /* ---- UPDATE ---- */
     } elseif ($action === 'update') {
@@ -67,16 +81,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo->prepare('UPDATE users SET rating_window_days = ? WHERE user_id = ?')
             ->execute([$_POST['rating_window_days'] !== '' ? (int)$_POST['rating_window_days'] : null, $uid]);
 
-        flashMessage(($ok1 && $ok2) ? 'User updated.' : 'Error updating user.',
-                     ($ok1 && $ok2) ? 'success' : 'danger');
+        if ($ok1 && $ok2) {
+            $showSuccessModal = true;
+            $modalMessage = 'User updated successfully!';
+        } else {
+            $showErrorModal = true;
+            $modalMessage = 'Error updating user.';
+        }
 
     /* ---- TOGGLE ACTIVE ---- */
     } elseif ($action === 'toggle_active') {
         $ok = deleteUser((int)$_POST['user_id']); // soft delete
-        flashMessage($ok ? 'User status toggled.' : 'Error toggling user.', $ok ? 'info' : 'danger');
+        if ($ok) {
+            $showSuccessModal = true;
+            $modalMessage = 'User status toggled successfully!';
+        } else {
+            $showErrorModal = true;
+            $modalMessage = 'Error toggling user status.';
+        }
     }
 
-    redirect('users.php');
+    // Remove the redirect line - we want to stay on the same page
 }
 
 /* -----------------------------------------------------------------------
@@ -218,6 +243,64 @@ include __DIR__ . '/partials/navbar.php';
   </div>
 </div>
 <?php endforeach; ?>
+
+<!-- Success Modal -->
+<div class="modal fade" id="successModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius: 0; border: 1px solid #e0e0e0; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+      <div class="modal-header" style="background-color: #ffffff; color: #333; border-bottom: 1px solid #e0e0e0; border-radius: 0; padding: 20px;">
+        <h5 class="modal-title mb-0 d-flex align-items-center" style="font-weight: 600;">
+          <span class="me-2" style="width: 8px; height: 8px; background-color: #28a745; border-radius: 50%; display: inline-block;"></span>
+          Success
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" style="padding: 30px; background-color: white; color: #333;">
+        <p class="mb-0" style="font-size: 16px; line-height: 1.5;"><?= htmlspecialchars($modalMessage) ?></p>
+      </div>
+      <div class="modal-footer" style="background-color: #f8f9fa; border-top: 1px solid #e0e0e0; border-radius: 0; padding: 15px 30px;">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-radius: 0; padding: 8px 24px; font-weight: 500;">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Error Modal -->
+<div class="modal fade" id="errorModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius: 0; border: 1px solid #e0e0e0; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+      <div class="modal-header" style="background-color: #ffffff; color: #333; border-bottom: 1px solid #e0e0e0; border-radius: 0; padding: 20px;">
+        <h5 class="modal-title mb-0 d-flex align-items-center" style="font-weight: 600;">
+          <span class="me-2" style="width: 8px; height: 8px; background-color: #dc3545; border-radius: 50%; display: inline-block;"></span>
+          Error
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" style="padding: 30px; background-color: white; color: #333;">
+        <p class="mb-0" style="font-size: 16px; line-height: 1.5;"><?= htmlspecialchars($modalMessage) ?></p>
+      </div>
+      <div class="modal-footer" style="background-color: #f8f9fa; border-top: 1px solid #e0e0e0; border-radius: 0; padding: 15px 30px;">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-radius: 0; padding: 8px 24px; font-weight: 500;">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Show modals based on PHP conditions
+    <?php if ($showSuccessModal): ?>
+    const successModal = new bootstrap.Modal(document.getElementById('successModal'));
+    successModal.show();
+    <?php endif; ?>
+
+    <?php if ($showErrorModal): ?>
+    const errorModal = new bootstrap.Modal(document.getElementById('errorModal'));
+    errorModal.show();
+    <?php endif; ?>
+});
+</script>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
 

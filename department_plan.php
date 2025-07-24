@@ -15,8 +15,8 @@ require_once __DIR__ . '/backend/department_controller.php';
 secureSessionStart();
 checkLogin();
 
-const ROLE_ADMIN    = 1;
-const ROLE_MANAGER  = 2;
+const ROLE_ADMIN     = 1;
+const ROLE_MANAGER   = 2;
 const MAX_WEIGHT_PCT = 100;
 
 if (!in_array($_SESSION['role_id'] ?? 0, [ROLE_ADMIN, ROLE_MANAGER], true)) {
@@ -25,14 +25,20 @@ if (!in_array($_SESSION['role_id'] ?? 0, [ROLE_ADMIN, ROLE_MANAGER], true)) {
     exit;
 }
 
-$user   = getUser($_SESSION['user_id']);
-$roleId = (int)$user['role_id'];
-$deptId = (int)$user['dept_id'];
+$user       = getUser($_SESSION['user_id']);
+$roleId     = (int)$user['role_id'];
+$deptId     = (int)$user['dept_id'];
 
-$monthKey = $_GET['month'] ?? date('Y-m-01');
-if (!preg_match('/^\d{4}-\d{2}-01$/', $monthKey)) {
-    $monthKey = date('Y-m-01');
+
+$monthKey   = $_GET['month'] ?? date('Y-m-01');
+
+if (preg_match('/^\d{4}-\d{2}$/', $monthKey)) {
+    $monthKey .= '-01';
 }
+if (!preg_match('/^\d{4}-\d{2}-01$/', $monthKey)) {
+    $monthKey = date('Y-m-01');    
+}
+
 
 use Backend\IndicatorRepository;
 use Backend\DepartmentRepository;
@@ -42,12 +48,29 @@ $deptRepo = $deptRepo ?? new DepartmentRepository($pdo);
 
 $flash = ['msg' => '', 'type' => 'success'];
 
+/* ------------------------------------------------------------------
+ *  Helper functions
+ * ------------------------------------------------------------------ */
+
+/** Link helper for < and > buttons */
 function monthLink(string $base, int $offset): string {
     $dt = new DateTime($base);
     $dt->modify(($offset >= 0 ? '+' : '') . $offset . ' month');
     return $dt->format('Y-m-01');
 }
 
+/** ACL filter: keep only allowed snapshots (or custom) */
+function filterAllowedSnapshots(array $rows, int $deptId): array {
+    return array_values(array_filter($rows, static function(array $r) use ($deptId): bool {
+        if (empty($r['indicator_id']))  return true;                 // custom KPI
+        if ((int)$r['indicator_active'] !== 1) return false;         // inactive
+        if (empty($r['responsible_departments'])) return false;      // no list
+        $list = array_map('intval', explode(',', $r['responsible_departments']));
+        return in_array($deptId, $list, true);
+    }));
+}
+
+/** Sum of weights, optional exclude id (for edits) */
 function computeWeightSum(array $snapshots, ?int $excludeId = null): int {
     $sum = 0;
     foreach ($snapshots as $s) {
@@ -57,46 +80,75 @@ function computeWeightSum(array $snapshots, ?int $excludeId = null): int {
     return $sum;
 }
 
+/** Fetch active KPIs assigned to this department */
+function loadDeptIndicators(IndicatorRepository $repo, int $deptId): array {
+    $all = $repo->fetchDepartmentIndicators(true); // active only
+    return array_values(array_filter($all, static function(array $r) use ($deptId): bool {
+        if (empty($r['responsible_departments'])) return false;
+        $ids = array_map('intval', explode(',', $r['responsible_departments']));
+        return in_array($deptId, $ids, true);
+    }));
+}
+
+/* ----------------------------- PRE-LOAD ----------------------------- */
+/* These vars must exist BEFORE any POST logic to avoid null errors. */
+$deptIndicators = loadDeptIndicators($indRepo, $deptId);   // ACL-filtered indicator list
+
 /* ----------------------------- POST Actions ----------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $errors = [];
 
-    // Always load current snapshots for weight calculations
+    /* Current plan for weight / duplicate checks */
     $currentSnapshots = $deptRepo->fetchDepartmentSnapshots($deptId, $monthKey);
-    $currentTotal     = computeWeightSum($currentSnapshots); // full current sum
+    $currentSnapshots = filterAllowedSnapshots($currentSnapshots, $deptId);
+    $currentTotal     = computeWeightSum($currentSnapshots);
 
+    /* ============== ADD  ============== */
     if ($action === 'add') {
         $indicatorId = $_POST['indicator_id'] === '' ? null : (int)$_POST['indicator_id'];
         $customName  = trim($_POST['custom_name'] ?? '');
         $targetRaw   = $_POST['target_value'] ?? '';
         $weightRaw   = $_POST['weight'] ?? '';
 
+        /* Basic validation */
         if ($indicatorId === null && $customName === '') $errors[] = 'Choose an indicator OR enter a custom KPI name.';
         if ($indicatorId !== null && $customName !== '') $errors[] = 'Do not provide both indicator and custom name.';
+        if ($indicatorId !== null && !array_filter($deptIndicators, fn($r) => (int)$r['indicator_id'] === $indicatorId)) {
+            $errors[] = 'Selected KPI is not assigned to your department.';
+        }
         if ($targetRaw === '' || !is_numeric($targetRaw)) $errors[] = 'Target must be numeric.';
         if ($weightRaw === '' || !ctype_digit(ltrim($weightRaw, '-'))) $errors[] = 'Weight must be a positive integer.';
         if ($weightRaw !== '' && (int)$weightRaw <= 0) $errors[] = 'Weight must be greater than zero.';
         if (mb_strlen($customName) > 255) $errors[] = 'Custom KPI name too long (max 255).';
         if (isset($_POST['unit_of_goal']) && mb_strlen($_POST['unit_of_goal']) > 50) $errors[] = 'Unit of Goal too long (max 50).';
 
-        $newWeight = (int)($weightRaw === '' ? 0 : $weightRaw);
-        $proposedTotal = $currentTotal + $newWeight;
+        /* Duplicate guard */
+        foreach ($currentSnapshots as $s) {
+            if ($indicatorId !== null && (int)$s['indicator_id'] === $indicatorId) {
+                $errors[] = 'This KPI is already in your plan for this month.';
+                break;
+            }
+            if ($indicatorId === null && strtolower($s['custom_name']) === strtolower($customName)) {
+                $errors[] = 'You already added a custom KPI with this name this month.';
+                break;
+            }
+        }
 
+        /* Weight capacity */
+        $newWeight      = (int)($weightRaw === '' ? 0 : $weightRaw);
+        $proposedTotal  = $currentTotal + $newWeight;
         if (!$errors && $proposedTotal > MAX_WEIGHT_PCT) {
             $remaining = MAX_WEIGHT_PCT - $currentTotal;
-            $errors[] = sprintf(
-                'Cannot add weight %d%%: current total is %d%%, max allowed is %d%%, remaining capacity is %d%%.',
+            $errors[]  = sprintf(
+                'Cannot add weight %d%%: remaining capacity is %d%%.',
                 $newWeight,
-                $currentTotal,
-                MAX_WEIGHT_PCT,
                 max(0, $remaining)
             );
         }
 
         if ($errors) {
             $flash = ['msg' => implode('<br>', $errors), 'type' => 'danger'];
-            // show inline (do not lose errors via redirect)
         } else {
             $data = [
                 'indicator_id'       => $indicatorId,
@@ -111,80 +163,94 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ];
             try {
                 $deptRepo->addSnapshot($deptId, $monthKey, $data);
-                $flash = ['msg' => 'KPI added to plan.', 'type' => 'success'];
-                redirect("department_plan.php?month=$monthKey");
+                redirect("department_plan.php?month=$monthKey&added=1");
             } catch (Exception $e) {
                 $flash = ['msg' => 'Error: ' . htmlspecialchars($e->getMessage()), 'type' => 'danger'];
             }
         }
     }
 
-    if ($action === 'update') {
-        $snapId     = (int)($_POST['snapshot_id'] ?? 0);
-        $targetRaw  = $_POST['target_value'] ?? '';
-        $weightRaw  = $_POST['weight'] ?? '';
 
-        if ($targetRaw === '' || !is_numeric($targetRaw)) $errors[] = 'Target must be numeric.';
-        if ($weightRaw === '' || !ctype_digit(ltrim($weightRaw, '-'))) $errors[] = 'Weight must be a positive integer.';
-        if ($weightRaw !== '' && (int)$weightRaw <= 0) $errors[] = 'Weight must be greater than zero.';
-        if ($snapId <= 0) $errors[] = 'Missing snapshot id.';
+/* ============== UPDATE  ============== */
+if ($action === 'update') {
+  $snapId     = (int)($_POST['snapshot_id'] ?? 0);
+  $targetRaw  = $_POST['target_value'] ?? '';
+  $weightRaw  = $_POST['weight'] ?? '';
 
-        // Find the existing snapshot to compute adjusted total
-        $oldSnap = null;
-        foreach ($currentSnapshots as $s) {
-            if ((int)$s['snapshot_id'] === $snapId) { $oldSnap = $s; break; }
-        }
-        if (!$oldSnap) $errors[] = 'Snapshot not found or not in this department/month.';
+  if ($targetRaw === '' || !is_numeric($targetRaw)) $errors[] = 'Target must be numeric.';
+  if ($weightRaw === '' || !ctype_digit(ltrim($weightRaw, '-'))) $errors[] = 'Weight must be a positive integer.';
+  if ((int)$weightRaw <= 0) $errors[] = 'Weight must be greater than zero.';
+  if ($snapId <= 0)        $errors[] = 'Missing snapshot id.';
 
-        $newWeight = (int)($weightRaw === '' ? 0 : $weightRaw);
-        if ($oldSnap) {
-            $sumWithout = computeWeightSum($currentSnapshots, $snapId);
-            $proposedTotal = $sumWithout + $newWeight;
-            if (!$errors && $proposedTotal > MAX_WEIGHT_PCT) {
-                $remaining = MAX_WEIGHT_PCT - $sumWithout;
-                $errors[] = sprintf(
-                    'Cannot set weight to %d%% (was %d%%): other KPIs total %d%%, max %d%%, remaining capacity %d%%.',
-                    $newWeight,
-                    (int)$oldSnap['weight'],
-                    $sumWithout,
-                    MAX_WEIGHT_PCT,
-                    max(0, $remaining)
-                );
-            }
-        }
+  /* Find the existing snapshot */
+  $oldSnap = null;
+  foreach ($currentSnapshots as $s) {
+      if ((int)$s['snapshot_id'] === $snapId) { $oldSnap = $s; break; }
+  }
+  if (!$oldSnap) $errors[] = 'Snapshot not found or not allowed.';
 
-        if ($errors) {
-            $flash = ['msg' => implode('<br>', $errors), 'type' => 'danger'];
-        } else {
-            try {
-                $deptRepo->updateSnapshot($snapId, (float)$targetRaw, $newWeight);
-                $flash = ['msg' => 'Entry updated.', 'type' => 'success'];
-            } catch (Exception $e) {
-                $flash = ['msg' => 'Update failed: ' . htmlspecialchars($e->getMessage()), 'type' => 'danger'];
-            }
-        }
-        redirect("department_plan.php?month=$monthKey");
-    }
+  /* Weight capacity check */
+  $newWeight = (int)$weightRaw;
+  if ($oldSnap) {
+      $sumWithout   = computeWeightSum($currentSnapshots, $snapId);
+      $proposedTotal = $sumWithout + $newWeight;
+      if ($proposedTotal > MAX_WEIGHT_PCT) {
+          $remaining = MAX_WEIGHT_PCT - $sumWithout;
+          $errors[]  = sprintf(
+              'Cannot set weight to %d%%: remaining capacity is %d%%.',
+              $newWeight,
+              max(0, $remaining)
+          );
+      }
+  }
 
+  if ($errors) {
+      $flash = ['msg' => implode('<br>', $errors), 'type' => 'danger'];
+  } else {
+      try {
+          $deptRepo->updateSnapshot($snapId, (float)$targetRaw, $newWeight);
+          redirect("department_plan.php?month=$monthKey&updated=1");
+      } catch (Exception $e) {
+          $flash = ['msg' => 'Update failed: '.htmlspecialchars($e->getMessage()), 'type' => 'danger'];
+      }
+  }
+}
+
+
+    /* ============== REMOVE  ============== */
     if ($action === 'remove') {
-        $snapId = (int)($_POST['snapshot_id'] ?? 0);
-        if ($snapId <= 0) {
-            $flash = ['msg' => 'Missing snapshot id.', 'type' => 'danger'];
-            redirect("department_plan.php?month=$monthKey");
-        }
-        try {
-            $deptRepo->removeSnapshot($snapId);
-            $flash = ['msg' => 'Entry removed.', 'type' => 'info'];
-        } catch (Exception $e) {
-            $flash = ['msg' => 'Remove failed: ' . htmlspecialchars($e->getMessage()), 'type' => 'danger'];
-        }
-        redirect("department_plan.php?month=$monthKey");
-    }
+      $snapId = (int)($_POST['snapshot_id'] ?? 0);
+      if ($snapId <= 0) {
+          $flash = ['msg' => 'Missing snapshot id.', 'type' => 'danger'];
+      } else {
+          try {
+              $deptRepo->removeSnapshot($snapId);
+              $flash = ['msg' => 'Entry removed.', 'type' => 'info'];
+          } catch (Exception $e) {
+              $flash = ['msg' => 'Remove failed: '.htmlspecialchars($e->getMessage()), 'type' => 'danger'];
+          }
+      }
+      redirect("department_plan.php?month=$monthKey");
+  }
 }
 
 /* ------------------------------ Data Load ------------------------------- */
-$deptIndicators = $indRepo->fetchDepartmentIndicators(true); // active only
-$snapshots      = $deptRepo->fetchDepartmentSnapshots($deptId, $monthKey);
+/* 1️⃣ ACL-filtered indicators already loaded → $deptIndicators */
+
+/* 2️⃣ Current plan */
+$snapshotsRaw  = $deptRepo->fetchDepartmentSnapshots($deptId, $monthKey);
+$snapshots     = filterAllowedSnapshots($snapshotsRaw, $deptId);
+
+/* 3️⃣ Hide KPIs already planned from dropdown */
+$usedIds = array_column(
+    array_filter($snapshots, fn($s) => !empty($s['indicator_id'])),
+    'indicator_id'
+);
+$availableIndicators = array_values(array_filter(
+    $deptIndicators,
+    fn($row) => !in_array((int)$row['indicator_id'], $usedIds, true)
+));
+
 $currentTotalWeight = computeWeightSum($snapshots);
 $remainingWeight    = MAX_WEIGHT_PCT - $currentTotalWeight;
 
@@ -229,17 +295,15 @@ include __DIR__ . '/partials/navbar.php';
   </div>
 
   <div class="alert <?= $currentTotalWeight > MAX_WEIGHT_PCT ? 'alert-danger' : 'alert-secondary'; ?> py-2 mb-4">
-    <div>
-      <strong>Weight Summary:</strong>
-      Current total = <span id="currentTotal"><?= $currentTotalWeight ?></span>%,
-      Remaining = <span id="remainingDisplay"><?= max(0, $remainingWeight) ?></span>%,
-      Maximum = <?= MAX_WEIGHT_PCT ?>%.
-      <?php if ($currentTotalWeight > MAX_WEIGHT_PCT): ?>
-        <br><span class="text-danger weight-warning">Total exceeds 100%. Adjust weights (edit/remove) until total ≤ 100% or new changes will be blocked.</span>
-      <?php else: ?>
-        <br><span class="text-muted">Do not exceed 100% across all KPIs for the month.</span>
-      <?php endif; ?>
-    </div>
+    <strong>Weight Summary:</strong>
+    Current total = <span id="currentTotal"><?= $currentTotalWeight ?></span>%,
+    Remaining = <span id="remainingDisplay"><?= max(0, $remainingWeight) ?></span>%,
+    Maximum = <?= MAX_WEIGHT_PCT ?>%.
+    <?php if ($currentTotalWeight > MAX_WEIGHT_PCT): ?>
+      <br><span class="text-danger weight-warning">Total exceeds 100%. Adjust weights until total ≤ 100%.</span>
+    <?php else: ?>
+      <br><span class="text-muted">Do not exceed 100% across all KPIs for the month.</span>
+    <?php endif; ?>
   </div>
 
   <!-- Add KPI -->
@@ -258,7 +322,7 @@ include __DIR__ . '/partials/navbar.php';
           <label class="form-label">Choose Indicator</label>
           <select name="indicator_id" class="form-select">
             <option value="">-- select --</option>
-            <?php foreach ($deptIndicators as $ind): ?>
+            <?php foreach ($availableIndicators as $ind): ?>
               <option value="<?= $ind['indicator_id'] ?>">
                 <?= htmlspecialchars($ind['name']) ?>
               </option>

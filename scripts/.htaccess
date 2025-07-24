@@ -1,0 +1,6 @@
+# Disable ModSecurity only for this webhook
+<IfModule mod_security2.c>
+  <Files "telegram_webhook.php">
+    SecRuleEngine Off
+  </Files>
+</IfModule>

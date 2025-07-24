@@ -2,6 +2,7 @@
 require_once __DIR__ . '/backend/auth.php';
 require_once __DIR__ . '/backend/utils.php';
 require_once __DIR__ . '/backend/department_audit_repo.php';
+require_once __DIR__ . '/backend/evaluation_controller.php';
 
 secureSessionStart();
 checkLogin();
@@ -24,41 +25,35 @@ $repo = new DepartmentAuditRepository($pdo);
 if (
   $_SERVER['REQUEST_METHOD'] === 'POST'
   && isset($_POST['id'], $_POST['score'])
-  && !isset($_POST['normal_page_load'])  // simple guard to distinguish AJAX
+  && !isset($_POST['normal_page_load'])
 ) {
   header('Content-Type: application/json; charset=utf-8');
 
   $snapshotId = (int)$_POST['id'];
-  $scoreRaw   = trim((string)$_POST['score']);   // '5', '2.5', '0'
+  $scoreRaw   = trim((string)$_POST['score']);
 
   // Whitelist
   $validScores = ['5', '2.5', '0'];
   if (!in_array($scoreRaw, $validScores, true)) {
-      echo json_encode([
-          'success' => false,
-          'message' => 'Invalid score value.'
-      ]);
+      echo json_encode(['success' => false, 'message' => 'Invalid score value.']);
       exit;
   }
 
-  // Optional: authorization re-check (defense in depth)
+  // Auth check
   if (($_SESSION['role_id'] ?? 0) !== 1) {
-      echo json_encode([
-          'success' => false,
-          'message' => 'Unauthorized.'
-      ]);
+      echo json_encode(['success' => false, 'message' => 'Unauthorized.']);
       exit;
   }
 
   $scoreFloat = (float)$scoreRaw;
 
   try {
-      // IMPORTANT: remove any reference to columns NOT in schema (e.g. audit_scored_at)
+      // 1) update the audit_score
       $stmt = $pdo->prepare("
           UPDATE department_indicator_monthly
-          SET audit_score = :score
-          WHERE snapshot_id = :id
-          LIMIT 1
+             SET audit_score = :score
+           WHERE snapshot_id = :id
+           LIMIT 1
       ");
       $stmt->execute([
           ':score' => $scoreFloat,
@@ -73,21 +68,50 @@ if (
           exit;
       }
 
-      // Map numeric → label (same mapping you expose client-side)
+      // ── NEW: cascade this audit into the scores table ──
+      // fetch dept_id & month for this snapshot
+      $infoStmt = $pdo->prepare("
+          SELECT dept_id, month
+            FROM department_indicator_monthly
+           WHERE snapshot_id = :id
+      ");
+      $infoStmt->execute([':id' => $snapshotId]);
+      $info = $infoStmt->fetch(PDO::FETCH_ASSOC);
+
+      if ($info) {
+          $evalRepo = new \Backend\EvaluationRepository($pdo);
+
+          // fetch all active users in that dept
+          $uStmt = $pdo->prepare("
+              SELECT user_id
+                FROM users
+               WHERE dept_id = :d
+                 AND active  = 1
+          ");
+          $uStmt->execute([':d' => $info['dept_id']]);
+
+          // refresh their scores
+          foreach ($uStmt->fetchAll(PDO::FETCH_COLUMN) as $uid) {
+              $evalRepo->updateScoresAfterEvaluation((int)$uid, $info['month']);
+          }
+      }
+      // ─────────────────────────────────────────────────────
+
+      // Map numeric → label
       $labelMap = [
           5.0  => 'Completed',
           2.5  => 'Not Enough Data',
           0.0  => 'Not Completed'
       ];
-
       $label = $labelMap[$scoreFloat] ?? 'Updated';
 
       echo json_encode([
-          'success'      => true,
-          'score'        => $scoreFloat,
-          'score_label'  => $label,
-          'message'      => 'Audit score saved.'
+          'success'     => true,
+          'score'       => $scoreFloat,
+          'score_label' => $label,
+          'message'     => 'Audit score saved.'
       ]);
+
   } catch (Throwable $e) {
       error_log('Audit score update error: ' . $e->getMessage());
       echo json_encode([
@@ -97,7 +121,6 @@ if (
   }
   exit;
 }
-
 
 /**
  * Filter inputs

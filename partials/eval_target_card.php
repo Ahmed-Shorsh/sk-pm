@@ -1,9 +1,13 @@
 
 <div class="card mb-4 shadow-sm">
-  <div class="card-header <?= !empty($targetIsManager) ? 'bg-secondary text-white' : '' ?>">
-    <?= htmlspecialchars($p['name']) ?>
-    <?= !empty($targetIsManager) ? ' (Manager)' : '' ?>
-  </div>
+ <div class="card-header <?= !empty($targetIsManager) ? 'bg-secondary text-white' : '' ?>">
+   <?php if (!empty($targetIsManager)): ?>
+     <?= $p['name']  ?>
+   <?php else: ?>
+     <?= htmlspecialchars($p['name'])  ?>
+   <?php endif; ?>
+   <?= !empty($targetIsManager) ? ' (Manager)' : '' ?>
+ </div>
 
   <div class="card-body">
     <?php

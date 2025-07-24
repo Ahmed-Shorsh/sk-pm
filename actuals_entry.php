@@ -42,7 +42,7 @@ function isWindowOpen(array $user): bool
     $days = $user['rating_window_days'] ?? $globalActualsDays;
 
     if ($days === 0) {
-        // 0 means “never lock”
+        // 0 means "never lock"
         return true;
     }
 
@@ -73,38 +73,50 @@ use Backend\DepartmentRepository;
 $deptRepo = $deptRepo ?? new DepartmentRepository($pdo);
 
 /*--------------------------------------------------------------
+ | Modal state variables
+ *-------------------------------------------------------------*/
+$showSuccessModal = false;
+$showErrorModal = false;
+$modalMessage = '';
+
+/*--------------------------------------------------------------
  | POST: Save actuals
  *-------------------------------------------------------------*/
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save') {
 
     // Managers must respect window; admins bypass
     if ($roleId === ROLE_MANAGER && !isWindowOpen($user)) {
-        flashMessage('Actuals entry window is closed for you.', 'danger');
-        redirect("actuals_entry.php?month=$monthKey");
+        $showErrorModal = true;
+        $modalMessage = 'Actuals entry window is closed for you.';
+    } else {
+        $actuals = $_POST['actual_value'] ?? [];
+        $notes   = $_POST['notes']        ?? [];
+        $paths   = $_POST['task_file_path'] ?? [];  
+
+        $hasError = false;
+        foreach ($paths as $sid => $p) {
+            $p = trim($p);
+            if ($p !== '' && !preg_match('/^\\\\\\\\/', $p)) {
+                $showErrorModal = true;
+                $modalMessage = 'File path must start with \\\\ (network share path). Please correct the path format.';
+                $hasError = true;
+                break;
+            }
+            // (We trim and keep the sanitized path back in the array)
+            $paths[$sid] = $p;
+        }
+
+        if (!$hasError) {
+            try {
+                $deptRepo->submitActuals($deptId, $monthKey, $actuals, $notes, $paths);
+                $showSuccessModal = true;
+                $modalMessage = 'Actuals for ' . date('F Y', strtotime($monthKey)) . ' have been saved successfully.';
+            } catch (Exception $e) {
+                $showErrorModal = true;
+                $modalMessage = 'Error saving actuals: ' . $e->getMessage();
+            }
+        }
     }
-
-    $actuals = $_POST['actual_value'] ?? [];
-    $notes   = $_POST['notes']        ?? [];
-    $paths   = $_POST['task_file_path'] ?? [];  
-
-
-    foreach ($paths as $sid => $p) {
-      $p = trim($p);
-      if ($p !== '' && !preg_match('/^\\\\\\\\/', $p)) {
-          flashMessage('File path must start with \\\\ (network share path). Please correct the path format.', 'danger');
-          redirect("actuals_entry.php?month=$monthKey");
-      }
-      // (We trim and keep the sanitized path back in the array)
-      $paths[$sid] = $p;
-    }
-
-    try {
-        $deptRepo->submitActuals($deptId, $monthKey, $actuals, $notes, $paths);
-        flashMessage('Actuals saved.', 'success');
-    } catch (Exception $e) {
-        flashMessage('Error: ' . $e->getMessage(), 'danger');
-    }
-    redirect("actuals_entry.php?month=$monthKey");
 }
 
 /*--------------------------------------------------------------
@@ -174,7 +186,7 @@ include __DIR__ . '/partials/intro_modal.php';
       </div>
     <?php endif; ?>
 
-    <form method="post">
+    <form method="post" id="actualsForm">
       <input type="hidden" name="action" value="save">
 
       <div class="table-responsive mb-4">
@@ -219,18 +231,17 @@ include __DIR__ . '/partials/intro_modal.php';
                           <?= $windowOpen ? '' : 'disabled' ?>><?= htmlspecialchars($row['notes'] ?? '') ?></textarea>
               </td>
          
-<td style="width:20rem">  
-    <input type="text"
-           name="task_file_path[<?= $row['snapshot_id'] ?>]"
-           value="<?= htmlspecialchars($row['task_file_path'] ?? '') ?>" 
-           class="form-control"
-           placeholder="Write in your Share Folder path"
-           <?= $windowOpen ? '' : 'disabled' ?>>
-    <div class="form-text">
-        For Example: <code>\\192.168.10.252\\Plan\\{Your Department Name}\\Folder\\MyFile.png</code>
-    </div>
-</td>
-
+              <td style="width:20rem">  
+                <input type="text"
+                       name="task_file_path[<?= $row['snapshot_id'] ?>]"
+                       value="<?= htmlspecialchars($row['task_file_path'] ?? '') ?>" 
+                       class="form-control"
+                       placeholder="Write in your Share Folder path"
+                       <?= $windowOpen ? '' : 'disabled' ?>>
+                <div class="form-text">
+                    For Example: <code>\\192.168.10.252\\Plan\\{Your Department Name}\\Folder\\MyFile.png</code>
+                </div>
+              </td>
             </tr>
           <?php endforeach; ?>
           </tbody>
@@ -247,6 +258,84 @@ include __DIR__ . '/partials/intro_modal.php';
 
 </div><!-- /container -->
 
+<!-- Success Modal -->
+<div class="modal fade" id="successModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius: 0; border: 1px solid #e0e0e0; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+      <div class="modal-header" style="background-color: #ffffff; color: #333; border-bottom: 1px solid #e0e0e0; border-radius: 0; padding: 20px;">
+        <h5 class="modal-title mb-0 d-flex align-items-center" style="font-weight: 600;">
+          <span class="me-2" style="width: 8px; height: 8px; background-color: #28a745; border-radius: 50%; display: inline-block;"></span>
+          Success
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" style="padding: 30px; background-color: white; color: #333;">
+        <p class="mb-0" style="font-size: 16px; line-height: 1.5;"><?= htmlspecialchars($modalMessage) ?></p>
+      </div>
+      <div class="modal-footer" style="background-color: #f8f9fa; border-top: 1px solid #e0e0e0; border-radius: 0; padding: 15px 30px;">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-radius: 0; padding: 8px 24px; font-weight: 500;">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Error Modal -->
+<div class="modal fade" id="errorModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius: 0; border: 1px solid #e0e0e0; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+      <div class="modal-header" style="background-color: #ffffff; color: #333; border-bottom: 1px solid #e0e0e0; border-radius: 0; padding: 20px;">
+        <h5 class="modal-title mb-0 d-flex align-items-center" style="font-weight: 600;">
+          <span class="me-2" style="width: 8px; height: 8px; background-color: #dc3545; border-radius: 50%; display: inline-block;"></span>
+          Error
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" style="padding: 30px; background-color: white; color: #333;">
+        <p class="mb-0" style="font-size: 16px; line-height: 1.5;"><?= htmlspecialchars($modalMessage) ?></p>
+      </div>
+      <div class="modal-footer" style="background-color: #f8f9fa; border-top: 1px solid #e0e0e0; border-radius: 0; padding: 15px 30px;">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-radius: 0; padding: 8px 24px; font-weight: 500;">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Show modals based on PHP conditions
+    <?php if ($showSuccessModal): ?>
+    const successModal = new bootstrap.Modal(document.getElementById('successModal'));
+    successModal.show();
+    <?php endif; ?>
+
+    <?php if ($showErrorModal): ?>
+    const errorModal = new bootstrap.Modal(document.getElementById('errorModal'));
+    errorModal.show();
+    <?php endif; ?>
+
+    // Form validation before submit
+    const form = document.getElementById('actualsForm');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            const actualInputs = form.querySelectorAll('input[name^="actual_value"]');
+            let hasEmptyActual = false;
+            
+            actualInputs.forEach(function(input) {
+                if (!input.disabled && (!input.value || input.value.trim() === '')) {
+                    hasEmptyActual = true;
+                }
+            });
+            
+            if (hasEmptyActual) {
+                e.preventDefault();
+                alert('Please enter actual values for all KPIs before submitting.');
+                return false;
+            }
+        });
+    }
+});
+</script>
+
 </body>
 </html>
