@@ -39,6 +39,10 @@ $telegramRequired     = !empty($current['telegram_signup_required']);
 /*--------------------------------------------------------------
  | Handle form submission
  *-------------------------------------------------------------*/
+$showSuccessModal = false;
+$showErrorModal = false;
+$modalMessage = '';
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update') {
 
     /** Deadlines (days) */
@@ -53,7 +57,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     $newTelegramReq = isset($_POST['telegram_signup_required']) ? '1' : '0';
 
     if ($newIndWeight + $newDeptWeight !== 100) {
-        flashMessage('Individual and department weights must sum to 100 %.', 'danger');
+        $showErrorModal = true;
+        $modalMessage = 'Individual and department weights must sum to 100%.';
     } else {
         $ok = $settingsRepo->updateSettings([
             'evaluation_deadline_days'      => (string)$newEvalDays,
@@ -63,11 +68,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
             'telegram_signup_required'      => $newTelegramReq
         ]);
 
-        flashMessage(
-            $ok ? 'Settings updated successfully.' : 'Error: Failed to update settings.',
-            $ok ? 'success' : 'danger'
-        );
-        redirect('settings.php');
+        if ($ok) {
+            $showSuccessModal = true;
+            $modalMessage = 'Settings updated successfully!';
+        } else {
+            $showErrorModal = true;
+            $modalMessage = 'Error: Failed to update settings.';
+        }
     }
 }
 
@@ -90,8 +97,6 @@ include __DIR__ . '/partials/navbar.php';
 <body class="font-serif bg-light">
   <div class="container py-4">
     <h1 class="mb-4">Global Settings</h1>
-
-    <?= $GLOBALS['message_html'] ?? '' ?>
 
     <form method="post">
       <input type="hidden" name="action" value="update">
@@ -169,5 +174,64 @@ include __DIR__ . '/partials/navbar.php';
       <button type="submit" class="btn btn-primary">Save Settings</button>
     </form>
   </div>
+
+
+  <!-- Success Modal -->
+<div class="modal fade" id="successModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius: 0; border: 1px solid #e0e0e0; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+      <div class="modal-header" style="background-color: #ffffff; color: #333; border-bottom: 1px solid #e0e0e0; border-radius: 0; padding: 20px;">
+        <h5 class="modal-title mb-0 d-flex align-items-center" style="font-weight: 600;">
+          <span class="me-2" style="width: 8px; height: 8px; background-color: #28a745; border-radius: 50%; display: inline-block;"></span>
+          Success
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" style="padding: 30px; background-color: white; color: #333;">
+        <p class="mb-0" style="font-size: 16px; line-height: 1.5;"><?= htmlspecialchars($modalMessage) ?></p>
+      </div>
+      <div class="modal-footer" style="background-color: #f8f9fa; border-top: 1px solid #e0e0e0; border-radius: 0; padding: 15px 30px;">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-radius: 0; padding: 8px 24px; font-weight: 500;">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Error Modal -->
+<div class="modal fade" id="errorModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius: 0; border: 1px solid #e0e0e0; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+      <div class="modal-header" style="background-color: #ffffff; color: #333; border-bottom: 1px solid #e0e0e0; border-radius: 0; padding: 20px;">
+        <h5 class="modal-title mb-0 d-flex align-items-center" style="font-weight: 600;">
+          <span class="me-2" style="width: 8px; height: 8px; background-color: #dc3545; border-radius: 50%; display: inline-block;"></span>
+          Error
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" style="padding: 30px; background-color: white; color: #333;">
+        <p class="mb-0" style="font-size: 16px; line-height: 1.5;"><?= htmlspecialchars($modalMessage) ?></p>
+      </div>
+      <div class="modal-footer" style="background-color: #f8f9fa; border-top: 1px solid #e0e0e0; border-radius: 0; padding: 15px 30px;">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-radius: 0; padding: 8px 24px; font-weight: 500;">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Show modals based on PHP conditions
+    <?php if ($showSuccessModal): ?>
+    const successModal = new bootstrap.Modal(document.getElementById('successModal'));
+    successModal.show();
+    <?php endif; ?>
+
+    <?php if ($showErrorModal): ?>
+    const errorModal = new bootstrap.Modal(document.getElementById('errorModal'));
+    errorModal.show();
+    <?php endif; ?>
+});
+</script>
 </body>
 </html>

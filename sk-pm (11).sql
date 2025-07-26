@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Jul 20, 2025 at 01:28 PM
+-- Generation Time: Jul 26, 2025 at 10:17 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -41,7 +41,9 @@ CREATE TABLE `departments` (
 INSERT INTO `departments` (`dept_id`, `dept_name`, `manager_id`, `share_path`) VALUES
 (1, 'HR', 3, '\\\\192.168.10.252\\Plan\\HR Plans'),
 (2, 'Finance', 4, ''),
-(3, 'IT', 7, NULL);
+(3, 'IT', 7, NULL),
+(4, 'Engineering', 28, ''),
+(5, 'test', NULL, '');
 
 -- --------------------------------------------------------
 
@@ -71,7 +73,12 @@ INSERT INTO `department_indicators` (`indicator_id`, `name`, `description`, `res
 (2, 'Budget Variance', 'Percentage difference between actual and planned budget', '2', 5, '%', NULL, 'Monthly financial report', 30, 2, 1),
 (3, 'System Uptime', 'Percentage of core-system availability during business hours', '3', 99.9, '%', '%', 'Monitoring dashboard', 50, 3, 1),
 (5, 'departemnt test', 'Why Your Previous Modals Likely Failed\r\nCustom multi-select script threw an error → JS stopped → Bootstrap data API never ran.\r\n\r\nMultiple, conflicting Bootstrap versions (4 + 5).', '2,1,3', 10, 'hours', NULL, 'Training attendance sheets', 5, 4, 1),
-(6, 'test', 'test des', '1', 5, 'hours', NULL, 'Training attendance sheets', 5, 5, 1);
+(6, 'test', 'test des', '1', 5, 'hours', NULL, 'Training attendance sheets', 5, 5, 1),
+(7, 'test for hr', 'hr only', '1', 10, '', NULL, '', NULL, 0, 1),
+(8, 'test dept indicator for hr', 'f', '1', 2, '', NULL, '', NULL, 0, 1),
+(9, 'engneer kpi1', 'test', '4', 10, '', NULL, '', 30, 1, 1),
+(10, 'engneer kpi2', 'test', '4', 10, '', NULL, '', 30, 2, 1),
+(11, 'engneer kpi3', 'test', '4', 10, '', NULL, '', 40, 3, 1);
 
 -- --------------------------------------------------------
 
@@ -105,11 +112,17 @@ CREATE TABLE `department_indicator_monthly` (
 
 INSERT INTO `department_indicator_monthly` (`snapshot_id`, `indicator_id`, `dept_id`, `month`, `custom_name`, `is_custom`, `target_value`, `weight`, `unit_of_goal`, `unit`, `way_of_measurement`, `created_by`, `actual_value`, `notes`, `created_at`, `audit_score`, `task_file_path`) VALUES
 (2, 2, 2, '2025-05-01', NULL, 0, 5, 30, '%', '%', 'Monthly financial report', 4, 4.2, 'Under budget', '2025-05-31 20:59:59', 2.5, NULL),
-(3, 3, 3, '2025-05-01', NULL, 0, 99.9, 50, '%', '%', 'Monitoring dashboard', 7, 99.7, 'Minor outage on 12 May', '2025-05-31 20:59:59', 2.5, NULL),
+(3, 3, 3, '2025-05-01', NULL, 0, 99.9, 50, '%', '%', 'Monitoring dashboard', 7, 99.7, 'Minor outage on 12 May', '2025-05-31 20:59:59', 5, NULL),
 (4, NULL, 1, '2025-07-01', 'custom kpi', 1, 3, 5, 'hours', '', '', 19, 3, 'note for custom', '2025-07-19 12:12:43', 5, ''),
-(5, 5, 1, '2025-07-01', '', 0, 3, 3, '', '', '', 19, 0, '', '2025-07-19 12:27:03', 2.5, ''),
+(5, 5, 1, '2025-07-01', '', 0, 3, 9, '', '', '', 19, 3, '', '2025-07-19 12:27:03', 2.5, '\\\\192.168.10.252\\Plan\\PR & Media\\tech\\link-to-excel\\uploads\\test_1.jpg'),
 (6, 6, 1, '2025-07-01', '', 0, 4, 5, '', '', '', 19, 0, '', '2025-07-19 15:09:23', 2.5, ''),
-(7, 2, 1, '2025-07-01', '', 0, 3, 1, '', '', '', 19, 2, 'majal nabw', '2025-07-20 10:45:56', 5, '\\\\192.168.10.252\\Plan\\PR & Media\\tech\\Group 25.png');
+(7, 2, 1, '2025-07-01', '', 0, 3, 1, '', '', '', 19, 2, 'majal nabw', '2025-07-20 10:45:56', 5, '\\\\192.168.10.252\\Plan\\PR & Media\\tech\\Group 25.png'),
+(8, 3, 1, '2025-07-01', '', 0, 5, 50, '', '', '', 19, 5, '', '2025-07-20 12:04:13', 0, ''),
+(10, 2, 2, '2025-07-01', '', 0, 4, 4, '', '', '', 26, 2, '', '2025-07-23 10:43:18', NULL, ''),
+(12, 8, 1, '2025-07-01', '', 0, 4, 4, '', '', '', 22, NULL, NULL, '2025-07-23 13:22:57', NULL, NULL),
+(13, 9, 4, '2025-07-01', '', 0, 5, 30, '', '', '', 28, 30, '', '2025-07-24 11:08:08', 2.5, ''),
+(14, 10, 4, '2025-07-01', '', 0, 5, 40, '', '', '', 28, 40, '', '2025-07-24 11:08:31', 5, ''),
+(15, 11, 4, '2025-07-01', '', 0, 5, 30, '', '', '', 28, 30, '', '2025-07-24 11:09:27', 2.5, '');
 
 -- --------------------------------------------------------
 
@@ -186,10 +199,59 @@ INSERT INTO `individual_evaluations` (`evaluation_id`, `evaluator_id`, `evaluate
 (16, 19, 5, 4, '2025-07-01', 1, 'bahawas', '2025-07-20 10:47:43'),
 (17, 19, 5, 2, '2025-07-01', 3, 'bahawas', '2025-07-20 10:47:43'),
 (18, 19, 5, 5, '2025-07-01', 0, 'bahawas', '2025-07-20 10:47:43'),
-(19, 19, 21, 1, '2025-07-01', 3, '', '2025-07-20 10:47:43'),
-(20, 19, 21, 4, '2025-07-01', 2, '', '2025-07-20 10:47:43'),
-(21, 19, 21, 2, '2025-07-01', 0, '', '2025-07-20 10:47:43'),
-(22, 19, 21, 5, '2025-07-01', 0, '', '2025-07-20 10:47:43');
+(59, 22, 5, 1, '2025-07-01', 2, 'test new', '2025-07-22 14:38:21'),
+(60, 22, 5, 4, '2025-07-01', 2, 'test new', '2025-07-22 14:38:21'),
+(61, 22, 5, 2, '2025-07-01', 2, 'test new', '2025-07-22 14:38:21'),
+(62, 22, 5, 5, '2025-07-01', 2, 'test new', '2025-07-22 14:38:21'),
+(63, 26, 1, 1, '2025-07-01', 2, 'test', '2025-07-23 09:05:54'),
+(64, 26, 1, 4, '2025-07-01', 2, 'test', '2025-07-23 09:05:54'),
+(65, 26, 1, 2, '2025-07-01', 2, 'test', '2025-07-23 09:05:54'),
+(66, 26, 1, 5, '2025-07-01', 2, 'test', '2025-07-23 09:05:54'),
+(67, 26, 4, 1, '2025-07-01', 2, 'test', '2025-07-23 09:05:54'),
+(68, 26, 4, 4, '2025-07-01', 2, 'test', '2025-07-23 09:05:54'),
+(69, 26, 4, 2, '2025-07-01', 2, 'test', '2025-07-23 09:05:54'),
+(70, 26, 4, 5, '2025-07-01', 2, 'test', '2025-07-23 09:05:54'),
+(71, 26, 4, 3, '2025-07-01', 2, 'test', '2025-07-23 09:05:54'),
+(72, 27, 1, 1, '2025-07-01', 2, '', '2025-07-23 10:17:49'),
+(73, 27, 1, 4, '2025-07-01', 2, '', '2025-07-23 10:17:49'),
+(74, 27, 1, 2, '2025-07-01', 2, '', '2025-07-23 10:17:49'),
+(75, 27, 1, 5, '2025-07-01', 2, '', '2025-07-23 10:17:49'),
+(76, 27, 26, 1, '2025-07-01', 2, '', '2025-07-23 10:17:49'),
+(77, 27, 26, 4, '2025-07-01', 2, '', '2025-07-23 10:17:49'),
+(78, 27, 26, 2, '2025-07-01', 2, '', '2025-07-23 10:17:49'),
+(79, 27, 26, 5, '2025-07-01', 2, '', '2025-07-23 10:17:49'),
+(80, 27, 4, 1, '2025-07-01', 2, '', '2025-07-23 10:17:49'),
+(81, 27, 4, 4, '2025-07-01', 2, '', '2025-07-23 10:17:49'),
+(82, 27, 4, 2, '2025-07-01', 2, '', '2025-07-23 10:17:49'),
+(83, 27, 4, 5, '2025-07-01', 2, '', '2025-07-23 10:17:49'),
+(84, 27, 4, 3, '2025-07-01', 2, '', '2025-07-23 10:17:49'),
+(85, 24, 5, 1, '2025-07-01', 1, '', '2025-07-23 10:38:51'),
+(86, 24, 5, 4, '2025-07-01', 1, '', '2025-07-23 10:38:51'),
+(87, 24, 5, 2, '2025-07-01', 1, '', '2025-07-23 10:38:51'),
+(88, 24, 5, 5, '2025-07-01', 1, '', '2025-07-23 10:38:51'),
+(89, 24, 19, 1, '2025-07-01', 1, '', '2025-07-23 10:38:51'),
+(90, 24, 19, 4, '2025-07-01', 1, '', '2025-07-23 10:38:51'),
+(91, 24, 19, 2, '2025-07-01', 1, '', '2025-07-23 10:38:51'),
+(92, 24, 19, 5, '2025-07-01', 1, '', '2025-07-23 10:38:51'),
+(93, 24, 3, 1, '2025-07-01', 1, '', '2025-07-23 10:38:51'),
+(94, 24, 3, 4, '2025-07-01', 1, '', '2025-07-23 10:38:51'),
+(95, 24, 3, 2, '2025-07-01', 1, '', '2025-07-23 10:38:51'),
+(96, 24, 3, 5, '2025-07-01', 1, '', '2025-07-23 10:38:51'),
+(97, 24, 3, 3, '2025-07-01', 1, '', '2025-07-23 10:38:51'),
+(98, 28, 29, 1, '2025-07-01', 4, 'full mark ', '2025-07-24 10:18:49'),
+(99, 28, 29, 2, '2025-07-01', 4, 'full mark ', '2025-07-24 10:18:49'),
+(100, 28, 30, 1, '2025-07-01', 2, 'half', '2025-07-24 10:18:49'),
+(101, 28, 30, 2, '2025-07-01', 2, 'half', '2025-07-24 10:18:49'),
+(102, 29, 30, 1, '2025-07-01', 2, 'half', '2025-07-24 10:55:18'),
+(103, 29, 30, 2, '2025-07-01', 2, 'half', '2025-07-24 10:55:18'),
+(104, 29, 28, 1, '2025-07-01', 4, 'leader half', '2025-07-24 10:55:18'),
+(105, 29, 28, 2, '2025-07-01', 4, 'leader half', '2025-07-24 10:55:18'),
+(106, 29, 28, 3, '2025-07-01', 2, 'leader half', '2025-07-24 10:55:18'),
+(107, 30, 29, 1, '2025-07-01', 4, '', '2025-07-24 11:00:47'),
+(108, 30, 29, 2, '2025-07-01', 4, '', '2025-07-24 11:00:47'),
+(109, 30, 28, 1, '2025-07-01', 4, '', '2025-07-24 11:00:47'),
+(110, 30, 28, 2, '2025-07-01', 4, '', '2025-07-24 11:00:47'),
+(111, 30, 28, 3, '2025-07-01', 4, '', '2025-07-24 11:00:47');
 
 -- --------------------------------------------------------
 
@@ -214,11 +276,11 @@ CREATE TABLE `individual_indicators` (
 --
 
 INSERT INTO `individual_indicators` (`indicator_id`, `name`, `description`, `category`, `responsible_departments`, `default_goal`, `default_weight`, `sort_order`, `active`) VALUES
-(1, 'Teamwork', 'Collaborates effectively with team members', 'individual', '1,2,3', 4, 20, 1, 1),
-(2, 'Communication', 'Communicates clearly and effectively', 'individual', NULL, 4, 20, 2, 1),
-(3, 'Leadership', 'Guides and inspires others toward goals', 'manager', '1,2,3', 4, 30, 1, 1),
-(4, 'name', 'description added. edited', 'individual', '', 2, NULL, 1, 1),
-(5, 'test', 'I’ve replaced the entire individual_indicators.php with the updated version—removing the “Responsible Departments” field, adding the truncated descriptions + “read more” modal, and highlighting manager rows in pale yellow. Let me know if you’d like any tweaks!', 'individual', NULL, 3, NULL, 5, 1);
+(1, 'Teamwork', 'Collaborates effectively with team members', 'individual', NULL, 4, 30, 1, 1),
+(2, 'Communication', 'Communicates clearly and effectively', 'individual', NULL, 4, 40, 2, 1),
+(3, 'Leadership', 'Guides and inspires others toward goals', 'manager', NULL, 4, 30, 3, 1),
+(4, 'name', 'description added. edited', 'individual', NULL, 2, NULL, 1, 0),
+(5, 'test', '', 'individual', NULL, 3, NULL, 5, 0);
 
 -- --------------------------------------------------------
 
@@ -239,7 +301,20 @@ CREATE TABLE `reminders_log` (
 
 INSERT INTO `reminders_log` (`reminder_id`, `user_id`, `type`, `sent_at`) VALUES
 (1, 1, 'monthly_evaluation_reminder', '2025-05-28 06:00:00'),
-(2, 5, 'monthly_evaluation_reminder', '2025-05-28 06:00:00');
+(2, 5, 'monthly_evaluation_reminder', '2025-05-28 06:00:00'),
+(3, 22, 'telegram', '2025-07-20 13:13:39'),
+(4, 22, 'telegram', '2025-07-20 13:18:07'),
+(5, 22, 'telegram', '2025-07-20 13:18:26'),
+(6, 22, 'telegram', '2025-07-20 13:23:37'),
+(7, 22, 'telegram', '2025-07-20 13:28:27'),
+(8, 22, 'telegram', '2025-07-20 13:28:32'),
+(9, 22, 'telegram', '2025-07-20 13:28:41'),
+(10, 22, 'telegram', '2025-07-20 13:28:48'),
+(11, 22, 'telegram', '2025-07-22 06:12:22'),
+(12, 22, 'telegram', '2025-07-22 06:12:29'),
+(13, 22, 'telegram', '2025-07-22 06:14:36'),
+(14, 22, 'telegram', '2025-07-22 06:16:01'),
+(15, 22, 'telegram', '2025-07-22 06:16:12');
 
 -- --------------------------------------------------------
 
@@ -271,8 +346,6 @@ CREATE TABLE `scores` (
   `score_id` int(11) NOT NULL,
   `user_id` int(11) NOT NULL,
   `month` date NOT NULL,
-  `indicator_id` int(11) DEFAULT NULL,
-  `score` float DEFAULT NULL,
   `category` enum('individual','manager') DEFAULT NULL,
   `dept_id` int(11) DEFAULT NULL,
   `final_score` float DEFAULT NULL,
@@ -284,10 +357,57 @@ CREATE TABLE `scores` (
 -- Dumping data for table `scores`
 --
 
-INSERT INTO `scores` (`score_id`, `user_id`, `month`, `indicator_id`, `score`, `category`, `dept_id`, `final_score`, `dept_score`, `individual_score`) VALUES
-(1, 1, '2025-05-01', NULL, NULL, NULL, 2, 85, 80, 88),
-(2, 5, '2025-05-01', NULL, NULL, NULL, 1, 83.5, 85, 82),
-(3, 3, '2025-05-01', NULL, NULL, 'manager', 1, 90, 92, NULL);
+INSERT INTO `scores` (`score_id`, `user_id`, `month`, `category`, `dept_id`, `final_score`, `dept_score`, `individual_score`) VALUES
+(1, 1, '2025-05-01', NULL, 2, 85, 80, 88),
+(2, 5, '2025-05-01', NULL, 1, 83.5, 85, 82),
+(3, 3, '2025-05-01', 'manager', 1, 90, 92, NULL),
+(4, 5, '2025-07-01', NULL, 1, 58.08, 50, 76.92),
+(5, 5, '2025-07-01', NULL, 1, 43.08, 50, 26.92),
+(6, 5, '2025-07-01', NULL, 1, 43.08, 50, 26.92),
+(7, 3, '2025-07-01', NULL, 1, 58.57, 50, 78.57),
+(8, 5, '2025-07-01', NULL, 1, 43.08, 50, 26.92),
+(9, 19, '2025-07-01', NULL, 1, 35, 50, 0),
+(10, 22, '2025-07-01', NULL, 1, 35, 50, 0),
+(11, 5, '2025-07-01', NULL, 1, 52.31, 50, 57.69),
+(12, 5, '2025-07-01', NULL, 1, 52.31, 50, 57.69),
+(13, 5, '2025-07-01', NULL, 1, 52.31, 50, 57.69),
+(14, 5, '2025-07-01', NULL, 1, 52.31, 50, 57.69),
+(15, 5, '2025-07-01', NULL, 1, 52.31, 50, 57.69),
+(16, 5, '2025-07-01', NULL, 1, 52.31, 50, 57.69),
+(17, 1, '2025-07-01', NULL, 2, 18.46, 0, 61.54),
+(18, 4, '2025-07-01', NULL, 2, 17.65, 0, 58.82),
+(19, 1, '2025-07-01', NULL, 2, 18.46, 0, 61.54),
+(20, 26, '2025-07-01', NULL, 2, 18.46, 0, 61.54),
+(21, 4, '2025-07-01', NULL, 2, 17.65, 0, 58.82),
+(22, 5, '2025-07-01', NULL, 1, 49.62, 50, 48.72),
+(23, 19, '2025-07-01', NULL, 1, 44.23, 50, 30.77),
+(24, 3, '2025-07-01', NULL, 1, 49.12, 50, 47.06),
+(25, 1, '2025-07-01', NULL, 2, 18.46, 0, 61.54),
+(26, 4, '2025-07-01', NULL, 2, 17.65, 0, 58.82),
+(27, 23, '2025-07-01', NULL, 2, 0, 0, 0),
+(28, 26, '2025-07-01', NULL, 2, 18.46, 0, 61.54),
+(29, 27, '2025-07-01', NULL, 2, 0, 0, 0),
+(30, 29, '2025-07-01', NULL, 4, 30, 0, 100),
+(31, 30, '2025-07-01', NULL, 4, 15, 0, 50),
+(32, 30, '2025-07-01', NULL, 4, 15, 0, 50),
+(33, 28, '2025-07-01', NULL, 4, 25, 0, 83.33),
+(34, 29, '2025-07-01', NULL, 4, 30, 0, 100),
+(35, 28, '2025-07-01', NULL, 4, 27.5, 0, 91.67),
+(36, 28, '2025-07-01', NULL, 4, 27.5, 0, 91.67),
+(37, 29, '2025-07-01', NULL, 4, 30, 0, 100),
+(38, 30, '2025-07-01', NULL, 4, 15, 0, 50),
+(39, 28, '2025-07-01', NULL, 4, 97.5, 100, 91.67),
+(40, 29, '2025-07-01', NULL, 4, 100, 100, 100),
+(41, 30, '2025-07-01', NULL, 4, 85, 100, 50),
+(42, 28, '2025-07-01', NULL, 4, 150, 175, 91.67),
+(43, 29, '2025-07-01', NULL, 4, 152.5, 175, 100),
+(44, 30, '2025-07-01', NULL, 4, 137.5, 175, 50),
+(45, 28, '2025-07-01', NULL, 4, 202.5, 250, 91.67),
+(46, 29, '2025-07-01', NULL, 4, 205, 250, 100),
+(47, 30, '2025-07-01', NULL, 4, 190, 250, 50),
+(48, 28, '2025-07-01', NULL, 4, 272.5, 350, 91.67),
+(49, 29, '2025-07-01', NULL, 4, 275, 350, 100),
+(50, 30, '2025-07-01', NULL, 4, 260, 350, 50);
 
 -- --------------------------------------------------------
 
@@ -343,12 +463,21 @@ INSERT INTO `users` (`user_id`, `name`, `email`, `password_hash`, `role_id`, `de
 (1, 'Ahmed Shorsh Hamad', 'ahmad.shorsh@sk.com', '$2y$10$tyKZ4sV8GEd9M15wkrrkdu8HctVagMUChZIgdXkpohUt/uMFEatui', 3, 2, '+964771992106', NULL, 'Sales Officer', '2000-08-26', '2023-09-01', 0, 1, 0, 'fd321bee828388f18d85687e865305361e51e12439dedea7d58c9155e967d806', '2025-06-17 09:37:51'),
 (2, 'Test', 'shorsh907@gmail.com', '$2y$10$PhMas541E53NTMCjlXh3SOB7zLDRqdmJWEvPS0Fa5on3uugkv2ZMS', 1, 3, '+1234567890', NULL, 'Sales Officer', '2013-02-18', '2025-06-24', 0, 1, 0, 'ddacd6229eabe11a5849ade29e1ce8f2b5bce3c0e30ed9072172c920f8ceadee', '2025-06-17 10:35:25'),
 (3, 'Sara Abbas', 'sara.abbas@southkurdistan.com', '$2y$10$tyKZ4sV8GEd9M15wkrrkdu8HctVagMUChZIgdXkpohUt/uMFEatui', 2, 1, '+9647700000001', NULL, 'HR Manager', '1985-04-10', '2020-01-15', 2, 1, 1, NULL, NULL),
-(4, 'Ali Mohammed', 'ali.mohammed@southkurdistan.com', '$2y$10$tyKZ4sV8GEd9M15wkrrkdu8HctVagMUChZIgdXkpohUt/uMFEatui', 2, 2, '+9647700000002', NULL, 'Finance Manager', '1980-11-13', '2019-05-10', 2, 1, 1, NULL, NULL),
+(4, 'Ali Mohammed', 'ali.mohammed@southkurdistan.com', '$2y$10$tyKZ4sV8GEd9M15wkrrkdu8HctVagMUChZIgdXkpohUt/uMFEatui', 3, 2, '+9647700000002', NULL, 'Finance Manager', '1980-11-13', '2019-05-10', 2, 1, 1, NULL, NULL),
 (5, 'Farah Karim', 'farah.karim@southkurdistan.com', '$2y$10$tyKZ4sV8GEd9M15wkrrkdu8HctVagMUChZIgdXkpohUt/uMFEatui', 3, 1, '+9647700000003', NULL, 'Recruiter', '1995-02-20', '2024-03-01', 0, 1, 1, NULL, NULL),
 (6, 'Omar Hameed', 'omar.hameed@southkurdistan.com', '$2y$10$tyKZ4sV8GEd9M15wkrrkdu8HctVagMUChZIgdXkpohUt/uMFEatui', 3, 3, '+9647700000004', NULL, 'IT Support', '1992-07-12', '2022-08-15', 0, 1, 1, NULL, NULL),
 (7, 'Layla Qadir', 'layla.qadir@southkurdistan.com', '$2y$10$tyKZ4sV8GEd9M15wkrrkdu8HctVagMUChZIgdXkpohUt/uMFEatui', 2, 3, '+9647700000005', NULL, 'IT Manager', '1987-09-05', '2018-11-01', 2, 1, 1, NULL, NULL),
-(19, 'Ahmed Shorsh', 'ahmad.shorsh@southkurdistan.com', '$2y$10$6p5R/hgZRaaGgM/22n6kheOraxWQXMuiybkICv8QYWGJ.nFtqhcgq', 2, 1, '+96477199210', NULL, 'IT Support', '2025-07-01', '2025-07-02', 0, 1, 1, NULL, NULL),
-(21, 'test local', 'ahmadhamad.one@gmail.com', '$2y$10$ewNcVDG00AF823F6KVI6AOvpVjl7RTqWWsLvqtt/qfbbW8tjL5kQO', 3, 1, '+9647719921065', NULL, 'fd', NULL, NULL, 0, 1, 0, '71a1491a83d466747ccb4768c7827f900a1fcf7bc5b9504d437cf46ee6aad4e9', '2025-07-17 14:33:26');
+(19, 'teestt', 'ahmad.shorsh@southkurdistan', '$2y$10$6p5R/hgZRaaGgM/22n6kheOraxWQXMuiybkICv8QYWGJ.nFtqhcgq', 3, 1, '+96477199210', NULL, 'IT Support', '2025-07-01', '2025-07-02', 0, 1, 1, NULL, NULL),
+(22, 'Ahmed Shorshh', 'ahmad.shorsh@southkurdistan.com', '$2y$10$EK1D.nhcHY5gTQjSUhAxoOr1drbQ7Ch0zaUkb.EwGoz3QViMLxI2K', 2, 1, '+9647719921065', 1421878995, 'fd', '0000-00-00', '0000-00-00', 0, 1, 1, NULL, NULL),
+(23, 'Danya kawa faeq', 'dania.kawa@southkurdistan.com', '$2y$10$yLO.zYa7BQVW6xz9m.XsA.CUaeDHGnJUUcyMHFpFU6onXZ/z0Bdi.', 1, 2, '+9647708944040', 197340445, 'Managing Director', '1994-01-01', '2019-11-30', 0, 1, 0, '2d28a599e79ec0c1c8fdcc6efb812ee3cffeac9a498af14c3ed016927695b8fa', '2025-07-23 11:16:43'),
+(24, 'mawa', 'mawa@m.com', '$2y$10$P1zVqJvBWKzmsTRZQEp55OHskWvgdIP6wamWEkG/AbwVNNMlJaCgO', 3, 1, '+9647719921065', NULL, 'Sales Officer', NULL, NULL, 0, 1, 0, '295a43d37a2bf92a7badfb29cbdc16cb8cdb40d556d17647ca7d74cf6d3ef4e7', '2025-07-24 07:42:43'),
+(26, 'maw', 'skg.iraq@gmail.com', '$2y$10$9f/qkZXcoLFGRtQ0JT8n7enBYASATtca5mBpO8FVV0USoCJDGXKtC', 2, 2, '+9647719921065', NULL, 'IT Support', NULL, NULL, 0, 1, 1, NULL, NULL),
+(27, 'testtest', 'ahmadhamad.one@gmail.com', '$2y$10$11USCGe1cbxRcvq.3JDZpusSXZwjZcg0m5N3Vqnw2fKN.WHm4FGpS', 3, 2, '+9647719921065', NULL, 'IT Support', NULL, NULL, 0, 1, 1, NULL, NULL),
+(28, 'name eng1', 'eng1@email.com', '$2y$10$K8YG3CJzq.Y2KA0bhAmppud3pN7iBeCuMQMxGJHLn4QyOLUkG7R2K', 2, 4, '+9647719921065', NULL, 'eng officer1', '1992-07-12', '2022-08-15', 0, 1, 0, NULL, NULL),
+(29, 'name eng2', 'eng2@email.com', '$2y$10$j33ze.4C4bKovkYg2ovXrOIGY53cZccls7KohHsTTh2EysGaLk1Vm', 3, 4, '+9647719921065', NULL, 'eng officer2', '0000-00-00', '0000-00-00', 0, 1, 0, NULL, NULL),
+(30, 'name eng3', 'eng3@email.com', '$2y$10$XsQo7ZD4dtTYG12pKn2KveKh3E1aurW.liEYGQtiVQfRYEtK7FBa6', 3, 4, '+9647719921065', NULL, 'eng officer3', '0000-00-00', '0000-00-00', 0, 1, 0, NULL, NULL),
+(31, 'test', 'test@gmail.comm', '$2y$10$iTR6RmIcqdpWfDyLm7db2ewaomv4cyN7qngbYb.j8.U2u8SD4bP/K', 3, 1, '+9647719921065', NULL, 'Sales Officer', '0000-00-00', '0000-00-00', 0, 1, 0, NULL, NULL),
+(32, 'test', 'test@gmail.comtt', '$2y$10$RdAAVTulVz6OFOoUqa7DUOOMwS8aCVhG3K8Oc0N.J7cMMMjNwY4QC', 3, 1, '+9647719921065', NULL, 'IT Support', '0000-00-00', '0000-00-00', 0, 1, 0, NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -372,7 +501,14 @@ CREATE TABLE `user_flags` (
 INSERT INTO `user_flags` (`flag_id`, `user_id`, `flag`, `value`, `flag_name`, `seen_at`) VALUES
 (1, 2, '', NULL, 'intro_seen', '2025-06-16 11:41:20'),
 (2, 1, '', NULL, 'intro_seen', '2025-06-24 09:47:02'),
-(4, 19, '', NULL, 'intro_seen', '2025-07-15 14:07:02');
+(4, 19, '', NULL, 'intro_seen', '2025-07-15 14:07:02'),
+(5, 22, '', NULL, 'intro_seen', '2025-07-20 12:23:38'),
+(6, 26, '', NULL, 'intro_seen', '2025-07-23 08:21:47'),
+(7, 24, '', NULL, 'intro_seen', '2025-07-23 10:01:43'),
+(8, 27, '', NULL, 'intro_seen', '2025-07-23 10:05:34'),
+(9, 28, '', NULL, 'intro_seen', '2025-07-24 10:16:53'),
+(10, 29, '', NULL, 'intro_seen', '2025-07-24 10:19:00'),
+(11, 30, '', NULL, 'intro_seen', '2025-07-24 13:55:30');
 
 -- --------------------------------------------------------
 
@@ -393,7 +529,11 @@ CREATE TABLE `user_telegram` (
 
 INSERT INTO `user_telegram` (`user_id`, `token`, `telegram_chat_id`, `verified`) VALUES
 (19, '018888634c24bbd747855c407378d484', NULL, 0),
-(21, 'b4864111d745d0ab8315ddffe56af66b', NULL, 0);
+(22, '0f36e5ad5635d0e24793508cd9be3b6d', 1421878995, 1),
+(23, '95ab508c0d96e2ad63558abcc4e03df4', 197340445, 1),
+(24, 'd9d8e1348f4b2f334b31fc02bcf020fc', NULL, 0),
+(26, '244750da0025b2d921db2615450218c2', NULL, 0),
+(27, '8aa4da0ab6e08d6b7d33da8368d5c462', NULL, 0);
 
 --
 -- Indexes for dumped tables
@@ -439,6 +579,7 @@ ALTER TABLE `indicators_old`
 --
 ALTER TABLE `individual_evaluations`
   ADD PRIMARY KEY (`evaluation_id`),
+  ADD UNIQUE KEY `uniq_eval_per_month` (`evaluator_id`,`evaluatee_id`,`indicator_id`,`month`),
   ADD KEY `evaluator_id` (`evaluator_id`),
   ADD KEY `evaluatee_id` (`evaluatee_id`),
   ADD KEY `indicator_id` (`indicator_id`);
@@ -467,8 +608,7 @@ ALTER TABLE `roles`
 --
 ALTER TABLE `scores`
   ADD PRIMARY KEY (`score_id`),
-  ADD KEY `user_id` (`user_id`),
-  ADD KEY `indicator_id` (`indicator_id`);
+  ADD KEY `user_id` (`user_id`);
 
 --
 -- Indexes for table `settings`
@@ -507,19 +647,19 @@ ALTER TABLE `user_telegram`
 -- AUTO_INCREMENT for table `departments`
 --
 ALTER TABLE `departments`
-  MODIFY `dept_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `dept_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT for table `department_indicators`
 --
 ALTER TABLE `department_indicators`
-  MODIFY `indicator_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+  MODIFY `indicator_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
 
 --
 -- AUTO_INCREMENT for table `department_indicator_monthly`
 --
 ALTER TABLE `department_indicator_monthly`
-  MODIFY `snapshot_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `snapshot_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
 
 --
 -- AUTO_INCREMENT for table `history`
@@ -537,7 +677,7 @@ ALTER TABLE `indicators_old`
 -- AUTO_INCREMENT for table `individual_evaluations`
 --
 ALTER TABLE `individual_evaluations`
-  MODIFY `evaluation_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=23;
+  MODIFY `evaluation_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=112;
 
 --
 -- AUTO_INCREMENT for table `individual_indicators`
@@ -549,7 +689,7 @@ ALTER TABLE `individual_indicators`
 -- AUTO_INCREMENT for table `reminders_log`
 --
 ALTER TABLE `reminders_log`
-  MODIFY `reminder_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `reminder_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
 
 --
 -- AUTO_INCREMENT for table `roles`
@@ -561,19 +701,19 @@ ALTER TABLE `roles`
 -- AUTO_INCREMENT for table `scores`
 --
 ALTER TABLE `scores`
-  MODIFY `score_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `score_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=51;
 
 --
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=22;
+  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=33;
 
 --
 -- AUTO_INCREMENT for table `user_flags`
 --
 ALTER TABLE `user_flags`
-  MODIFY `flag_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `flag_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
 
 --
 -- Constraints for dumped tables
@@ -617,8 +757,7 @@ ALTER TABLE `reminders_log`
 -- Constraints for table `scores`
 --
 ALTER TABLE `scores`
-  ADD CONSTRAINT `scores_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `scores_ibfk_2` FOREIGN KEY (`indicator_id`) REFERENCES `individual_indicators` (`indicator_id`) ON DELETE SET NULL;
+  ADD CONSTRAINT `scores_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE;
 
 --
 -- Constraints for table `users`
