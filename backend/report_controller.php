@@ -237,31 +237,18 @@ final class ReportRepository
 
 
     public function teamFinalScores(int $deptId, string $month): array
-
     {
-
         $sql = "
-
           SELECT u.user_id, u.name,
-
                  s.individual_score,
-
                  s.final_score
-
           FROM   scores s
-
           JOIN   users  u ON s.user_id = u.user_id
-
           WHERE  s.dept_id = :d
-
             AND  s.month   = :m
-
           ORDER  BY s.final_score DESC
-
         ";
-
         return $this->select($sql, [':d' => $deptId, ':m' => $month]);
-
     }
 
 
